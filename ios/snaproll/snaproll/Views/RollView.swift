@@ -44,6 +44,7 @@ struct RollView: View {
             Text("This will remove the roll from local storage on this device.")
         }
         .snaprollScreenNavigation()
+        .snaprollPreferredOrientations(.portrait)
     }
 
     private var topBar: some View {

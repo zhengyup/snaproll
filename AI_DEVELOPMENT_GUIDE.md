@@ -215,7 +215,10 @@ Initial MVP Order:
 - Updated the create-roll flow so film selection shows each stock's name, short description, and color or black-and-white type.
 - Replaced the generic revealed-image processor with `PhotoRenderService`, a modular rendering pipeline that applies film-inspired looks only after reveal.
 - Implemented stock-specific looks for Kodak Gold 200, Fujifilm Superia 400, and Ilford HP5 Plus using simple Core Image adjustments.
-- Preserved the real revealed-roll gallery and full-screen photo viewer while routing all revealed rendering through the new stock-aware pipeline.
+- Refactored the revealed roll into a filmstrip-style viewer that presents one selected photo at a time with a horizontal strip of thumbnails underneath.
+- Updated the revealed viewing experience to preserve original photo composition at all times: no automatic cropping, no stretching, and black space used whenever needed.
+- Added camera-only orientation control so the capture experience requests landscape while the rest of the app remains portrait.
+- Tuned Fujifilm Superia 400 further toward cooler whites, gentler contrast, subtle green-blue influence, softer highlights, slightly lifted blacks, and restrained fine grain.
 - Kept original stored images untouched and applied rendering only to display copies loaded during the reveal flow.
 - Added lightweight in-memory caching inside the rendering service so repeated gallery and full-screen viewing does not re-run the same transforms unnecessarily.
 - Preserved failure safety by falling back to the original loaded image if rendering fails.
@@ -228,15 +231,18 @@ Initial MVP Order:
 - Rendering happens only after reveal, inside the reveal flow, which preserves the product rule that shooting remains hidden and visually unprocessed.
 - `PhotoStorageService` still owns filesystem reads; `PhotoRenderService` only transforms already-loaded `UIImage` instances and never overwrites originals.
 - `RevealViewModel` coordinates photo metadata loading, original image loading, and rendered image preparation so SwiftUI views remain presentation-focused.
+- `GalleryView` now adapts itself to the selected photograph instead of forcing photographs into a fixed grid. Landscape images use full available width, portrait images remain centered, and black space absorbs any leftover area.
+- Orientation preference is now explicit per screen. Portrait screens opt into portrait, while `CameraView` opts into landscape so the film-camera experience can feel distinct without rotating the whole app permanently.
 - A lightweight `NSCache` lives inside `PhotoRenderService` because the same revealed images are revisited between the grid and the full-screen viewer. This keeps caching simple and fully in memory.
-- Full-screen browsing still uses a restrained `TabView` pager instead of a heavier custom gesture system, which keeps the interaction Apple-native and maintainable.
+- The revealed viewer now prioritizes composition fidelity over generic gallery density, which better matches the intended compact-film-camera feel from the current visual references.
 
 ## Known Limitations
 
 - This phase has been verified with an iPhone-target build, but not with hands-on device testing from inside Codex.
 - The rendering pipeline is intentionally approximate and expressive rather than a scientific emulation of real film stocks.
 - Processed images are cached in memory only; there is no disk cache for rendered variants.
-- Full-screen browsing supports swipe paging and close, but there is not yet pinch-to-zoom or deeper photo metadata presentation.
+- The current camera orientation support still relies on older AVFoundation orientation APIs that compile cleanly but emit SDK deprecation warnings for future migration.
+- The revealed viewer now favors a single-photo filmstrip layout, but there is not yet a richer zoom or metadata interaction layer.
 - Older event-based language still remains in `PRODUCT_SPEC.md` and `ARCHITECTURE.md`, even though the implementation continues to follow the current roll-based direction.
 
 ## Next Phase

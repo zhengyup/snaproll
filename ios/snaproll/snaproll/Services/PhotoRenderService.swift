@@ -50,22 +50,25 @@ final class PhotoRenderService {
     }
 
     private func renderFujifilmSuperia400(_ image: CIImage) -> CIImage {
-        let cooled = applyTemperature(image, neutralX: 6500, neutralY: 0, targetX: 5900, targetY: -8)
+        let cooled = applyTemperature(image, neutralX: 6500, neutralY: 0, targetX: 6100, targetY: -6)
         let tinted = applyColorMatrix(
             cooled,
-            red: CIVector(x: 0.98, y: 0, z: 0, w: 0),
-            green: CIVector(x: 0, y: 1.06, z: 0.03, w: 0),
-            blue: CIVector(x: 0, y: 0.02, z: 1.08, w: 0)
+            red: CIVector(x: 0.99, y: 0.01, z: 0, w: 0),
+            green: CIVector(x: 0, y: 1.03, z: 0.02, w: 0),
+            blue: CIVector(x: 0, y: 0.01, z: 1.05, w: 0)
         )
-        let contrasted = applyColorControls(tinted, saturation: 1.04, contrast: 1.14, brightness: 0.005)
-        return applyVignette(contrasted, intensity: 0.18, radius: 0.95)
+        let softenedHighlights = applyHighlightShadow(tinted, highlightAmount: 0.90, shadowAmount: 0.18)
+        let contrasted = applyColorControls(softenedHighlights, saturation: 0.98, contrast: 1.07, brightness: 0.012)
+        let softened = applyNoiseReduction(contrasted, noiseLevel: 0.01, sharpness: 0.18)
+        let grained = applySoftGrain(to: softened, intensity: 0.018)
+        return applyVignette(grained, intensity: 0.14, radius: 0.92)
     }
 
     private func renderIlfordHP5Plus(_ image: CIImage) -> CIImage {
         let monochrome = applyMonochrome(image)
         let contrasted = applyColorControls(monochrome, saturation: 0, contrast: 1.22, brightness: 0.01)
         let shadowLifted = applyHighlightShadow(contrasted, highlightAmount: 0.94, shadowAmount: 0.10)
-        let grained = applySoftGrain(to: shadowLifted)
+        let grained = applySoftGrain(to: shadowLifted, intensity: 0.03)
         return applyVignette(grained, intensity: 0.24, radius: 1.00)
     }
 
@@ -145,7 +148,18 @@ final class PhotoRenderService {
         return filter.outputImage ?? image
     }
 
-    private func applySoftGrain(to image: CIImage) -> CIImage {
+    private func applyNoiseReduction(_ image: CIImage, noiseLevel: CGFloat, sharpness: CGFloat) -> CIImage {
+        guard let filter = CIFilter(name: "CINoiseReduction") else {
+            return image
+        }
+
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(noiseLevel, forKey: "inputNoiseLevel")
+        filter.setValue(sharpness, forKey: "inputSharpness")
+        return filter.outputImage ?? image
+    }
+
+    private func applySoftGrain(to image: CIImage, intensity: CGFloat) -> CIImage {
         guard let randomGenerator = CIFilter(name: "CIRandomGenerator")?.outputImage,
               let alphaMatrix = CIFilter(name: "CIColorMatrix"),
               let composite = CIFilter(name: "CISourceOverCompositing") else {
@@ -157,7 +171,7 @@ final class PhotoRenderService {
         alphaMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputRVector")
         alphaMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputGVector")
         alphaMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBVector")
-        alphaMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0.03), forKey: "inputAVector")
+        alphaMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: intensity), forKey: "inputAVector")
 
         guard let noiseOverlay = alphaMatrix.outputImage else {
             return image

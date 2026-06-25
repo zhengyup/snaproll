@@ -45,7 +45,7 @@ final class PreviewView: UIView {
             return
         }
 
-        connection.videoOrientation = windowScene.interfaceOrientation.videoOrientation
+        connection.videoOrientation = windowScene.effectiveGeometry.interfaceOrientation.videoOrientation
     }
 }
 #elseif os(macOS)

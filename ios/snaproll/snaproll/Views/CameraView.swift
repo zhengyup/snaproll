@@ -49,6 +49,7 @@ struct CameraView: View {
             dismiss()
         }
         .snaprollScreenNavigation()
+        .snaprollPreferredOrientations(.landscape)
     }
 
     private var cameraPreview: some View {

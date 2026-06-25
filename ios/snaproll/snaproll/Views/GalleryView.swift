@@ -4,262 +4,247 @@ struct GalleryView: View {
     let roll: Roll
     let photoItems: [RevealPhotoItem]
     let isLoading: Bool
-
-    @State private var selectedIndex: Int?
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14)
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("REVEALED")
-                    .font(.system(size: 14, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(AppTheme.primaryAction)
-
-                Text(roll.name)
-                    .font(.system(size: 38, weight: .bold, design: .serif))
-                    .italic()
-                    .foregroundStyle(AppTheme.creamText)
-
-                Text(subtitle)
-                    .font(.title3)
-                    .foregroundStyle(AppTheme.mutedText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if isLoading {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .tint(AppTheme.primaryAction)
-                        .scaleEffect(1.1)
-
-                    Text("Developing your finished roll")
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.softText)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 36)
-            } else {
-                LazyVGrid(columns: columns, spacing: 14) {
-                    if photoItems.isEmpty {
-                        missingRollCard
-                    } else {
-                        ForEach(Array(photoItems.enumerated()), id: \.element.id) { index, item in
-                            Button {
-                                selectedIndex = index
-                            } label: {
-                                GalleryPhotoCell(item: item)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-        }
-        .fullScreenCover(isPresented: isPhotoViewerPresented) {
-            if let selectedIndex {
-                PhotoViewerView(
-                    rollName: roll.name,
-                    photoItems: photoItems,
-                    selectedIndex: selectedIndex
-                ) {
-                    self.selectedIndex = nil
-                }
-            }
-        }
-    }
-
-    private var subtitle: String {
-        if photoItems.isEmpty {
-            return "This roll has been opened, but some memories are missing."
-        }
-
-        return "\(photoItems.count) memories, captured in order."
-    }
-
-    private var missingRollCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: "photo")
-                .font(.title2)
-                .foregroundStyle(AppTheme.primaryAction)
-
-            Text("This roll is open, but its images could not be loaded.")
-                .font(.headline)
-                .foregroundStyle(AppTheme.creamText)
-
-            Text("Missing photos stay graceful here so the reveal never crashes.")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.softText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, minHeight: 180, alignment: .leading)
-        .background(SnaprollPanelBackground(cornerRadius: 22))
-        .gridCellColumns(2)
-    }
-
-    private var isPhotoViewerPresented: Binding<Bool> {
-        Binding(
-            get: { selectedIndex != nil },
-            set: { isPresented in
-                if !isPresented {
-                    selectedIndex = nil
-                }
-            }
-        )
-    }
-}
-
-private struct GalleryPhotoCell: View {
-    let item: RevealPhotoItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Group {
-                if let image = item.image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    ZStack {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.05))
-
-                        Image(systemName: "photo")
-                            .font(.title2)
-                            .foregroundStyle(AppTheme.softText)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(item.aspectRatio, contentMode: .fit)
-            .frame(minHeight: item.isLandscape ? 120 : 220)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Exposure \(item.photo.exposureNumber)")
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.creamText)
-
-                Text(capturedText)
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.softText)
-            }
-        }
-    }
-
-    private var capturedText: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: item.photo.createdAt)
-    }
-}
-
-private struct PhotoViewerView: View {
-    let rollName: String
-    let photoItems: [RevealPhotoItem]
     let onClose: () -> Void
 
-    @State private var selectedIndex: Int
-
-    init(rollName: String, photoItems: [RevealPhotoItem], selectedIndex: Int, onClose: @escaping () -> Void) {
-        self.rollName = rollName
-        self.photoItems = photoItems
-        self.onClose = onClose
-        _selectedIndex = State(initialValue: selectedIndex)
-    }
+    @State private var selectedIndex = 0
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.ignoresSafeArea()
 
-            TabView(selection: $selectedIndex) {
-                ForEach(Array(photoItems.enumerated()), id: \.element.id) { index, item in
-                    ZStack {
-                        Color.black.ignoresSafeArea()
+                if isLoading {
+                    loadingState
+                } else if photoItems.isEmpty {
+                    emptyState
+                } else {
+                    VStack(spacing: 0) {
+                        topChrome
+                            .padding(.horizontal, 24)
+                            .padding(.top, 18)
 
-                        if let image = item.image {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 110)
-                        } else {
-                            VStack(spacing: 12) {
-                                Image(systemName: "photo")
-                                    .font(.largeTitle)
-                                    .foregroundStyle(AppTheme.softText)
+                        Spacer(minLength: 28)
 
-                                Text("This exposure is unavailable.")
-                                    .font(.headline)
-                                    .foregroundStyle(AppTheme.creamText)
-                            }
-                        }
+                        selectedPhotoView(maxWidth: geometry.size.width)
+
+                        Spacer(minLength: 28)
+
+                        thumbnailStrip
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 28)
                     }
-                    .tag(index)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+        }
+        .onAppear {
+            clampSelection()
+        }
+        .onChange(of: photoItems.count) {
+            clampSelection()
+        }
+    }
 
-            VStack(spacing: 18) {
-                HStack {
-                    Button {
-                        onClose()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(AppTheme.creamText)
-                            .frame(width: 42, height: 42)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-                }
-
-                VStack(spacing: 8) {
-                    Text(rollName)
-                        .font(.system(size: 30, weight: .bold, design: .serif))
-                        .italic()
-                        .foregroundStyle(AppTheme.creamText)
-
-                    Text("Exposure \(currentItem.photo.exposureNumber) of \(photoItems.count)")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(AppTheme.softText)
-                }
+    private var topChrome: some View {
+        HStack(spacing: 16) {
+            Button {
+                onClose()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppTheme.creamText)
+                    .frame(width: 42, height: 42)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Circle())
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 18)
+            .buttonStyle(.plain)
 
-            VStack {
-                Spacer()
+            Spacer()
 
-                Text(capturedText)
+            VStack(spacing: 4) {
+                Text(roll.name)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.creamText)
+                    .lineLimit(1)
+
+                Text(headerDateText)
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.softText)
-                    .padding(.bottom, 34)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Capsule())
+
+            Spacer()
+
+            Circle()
+                .fill(Color.white.opacity(0.08))
+                .frame(width: 42, height: 42)
+                .overlay(
+                    Image(systemName: "ellipsis")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppTheme.creamText)
+                )
+        }
+    }
+
+    private func selectedPhotoView(maxWidth: CGFloat) -> some View {
+        let currentItem = photoItems[selectedIndex]
+
+        return VStack(spacing: 0) {
+            if let image = currentItem.image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: maxWidth, alignment: .center)
+                    .background(Color.black)
+            } else {
+                ZStack {
+                    Rectangle()
+                        .fill(Color.black)
+
+                    VStack(spacing: 12) {
+                        Image(systemName: "photo")
+                            .font(.largeTitle)
+                            .foregroundStyle(AppTheme.softText)
+
+                        Text("This exposure is unavailable.")
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.creamText)
+                    }
+                }
+                .frame(width: maxWidth, height: maxWidth * 0.75)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private var thumbnailStrip: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(Array(photoItems.enumerated()), id: \.element.id) { index, item in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedIndex = index
+                            }
+                            proxy.scrollTo(item.id, anchor: .center)
+                        } label: {
+                            thumbnail(for: item, isSelected: index == selectedIndex)
+                        }
+                        .buttonStyle(.plain)
+                        .id(item.id)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+            .onAppear {
+                guard photoItems.indices.contains(selectedIndex) else {
+                    return
+                }
+
+                proxy.scrollTo(photoItems[selectedIndex].id, anchor: .center)
+            }
+            .onChange(of: selectedIndex) {
+                guard photoItems.indices.contains(selectedIndex) else {
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    proxy.scrollTo(photoItems[selectedIndex].id, anchor: .center)
+                }
             }
         }
     }
 
-    private var currentItem: RevealPhotoItem {
-        photoItems[selectedIndex]
+    private func thumbnail(for item: RevealPhotoItem, isSelected: Bool) -> some View {
+        Group {
+            if let image = item.image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: thumbnailWidth(for: item), height: 66)
+            } else {
+                ZStack {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+
+                    Image(systemName: "photo")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                .frame(width: thumbnailWidth(for: item), height: 66)
+            }
+        }
+        .background(Color.black)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(isSelected ? AppTheme.creamText : Color.white.opacity(0.08), lineWidth: isSelected ? 2 : 1)
+        )
+        .opacity(isSelected ? 1 : 0.8)
     }
 
-    private var capturedText: String {
+    private func thumbnailWidth(for item: RevealPhotoItem) -> CGFloat {
+        let clampedRatio = min(max(item.aspectRatio, 0.56), 1.8)
+        return 66 * clampedRatio
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .tint(AppTheme.primaryAction)
+                .scaleEffect(1.1)
+
+            Text("Developing your finished roll")
+                .font(.headline)
+                .foregroundStyle(AppTheme.softText)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "photo")
+                .font(.largeTitle)
+                .foregroundStyle(AppTheme.softText)
+
+            Text("This roll has been opened, but its images could not be loaded.")
+                .font(.headline)
+                .foregroundStyle(AppTheme.creamText)
+                .multilineTextAlignment(.center)
+
+            Button {
+                onClose()
+            } label: {
+                Text("Back")
+                    .font(.headline)
+                    .foregroundStyle(Color.black.opacity(0.9))
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.primaryAction)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var headerDateText: String {
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: currentItem.photo.createdAt)
+        formatter.dateFormat = "dd/MM/yy"
+        return formatter.string(from: roll.createdAt)
+    }
+
+    private func clampSelection() {
+        guard !photoItems.isEmpty else {
+            selectedIndex = 0
+            return
+        }
+
+        selectedIndex = min(selectedIndex, photoItems.count - 1)
     }
 }
 
@@ -268,7 +253,8 @@ struct GalleryView_Previews: PreviewProvider {
         GalleryView(
             roll: Roll.placeholder.markingRevealed(),
             photoItems: [],
-            isLoading: false
+            isLoading: false,
+            onClose: {}
         )
     }
 }

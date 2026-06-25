@@ -22,6 +22,7 @@ struct CreateRollView: View {
         }
         .background(SnaprollScreenBackground())
         .snaprollScreenNavigation()
+        .snaprollPreferredOrientations(.portrait)
     }
 
     private var topBar: some View {

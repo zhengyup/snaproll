@@ -188,7 +188,7 @@ private extension CameraService {
             return .portrait
         }
 
-        switch windowScene.interfaceOrientation {
+        switch windowScene.effectiveGeometry.interfaceOrientation {
         case .portrait:
             return .portrait
         case .portraitUpsideDown:

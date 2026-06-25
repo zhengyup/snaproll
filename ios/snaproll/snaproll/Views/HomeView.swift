@@ -17,6 +17,7 @@ struct HomeView: View {
             .onAppear {
                 viewModel.reload()
             }
+            .snaprollPreferredOrientations(.portrait)
         }
     }
 

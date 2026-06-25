@@ -21,27 +21,36 @@ struct RevealView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 28) {
-                topBar
+        ZStack {
+            if viewModel.showsGallery {
+                Color.black.ignoresSafeArea()
+            } else {
+                SnaprollScreenBackground()
+            }
 
+            Group {
                 if viewModel.showsGallery {
                     revealedContent
                         .transition(.opacity)
                 } else {
-                    sealedContent
-                        .transition(.opacity)
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 28) {
+                            topBar
+                            sealedContent
+                                .transition(.opacity)
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 18)
+                        .padding(.bottom, 30)
+                    }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 18)
-            .padding(.bottom, 30)
         }
-        .background(SnaprollScreenBackground())
         .onAppear {
             viewModel.handleAppear()
         }
         .snaprollScreenNavigation()
+        .snaprollPreferredOrientations(.portrait)
     }
 
     private var topBar: some View {
@@ -134,7 +143,10 @@ struct RevealView: View {
         GalleryView(
             roll: viewModel.roll,
             photoItems: viewModel.photoItems,
-            isLoading: viewModel.isLoading
+            isLoading: viewModel.isLoading,
+            onClose: {
+                dismiss()
+            }
         )
     }
 }
