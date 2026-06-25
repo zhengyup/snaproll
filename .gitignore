@@ -1,0 +1,32 @@
+.DS_Store
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcuserdatad/
+*.moved-aside
+*.xcarchive
+*.dSYM
+*.ipa
+*.app
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Local app data / generated photos
+Documents/
+Snaproll/photos/
+*.heic
+*.jpg
+*.jpeg
+*.png
+EOF
+
+# Local DerivedData variants
+.derivedData/
+.derivedData-ios/
+.derivedData-macos/
+EOF
