@@ -18,10 +18,15 @@ final class HomeViewModel: ObservableObject {
     }
 
     private let localStorageService: LocalStorageService
+    private let photoStorageService: PhotoStorageService
 
-    init(localStorageService: LocalStorageService? = nil) {
+    init(
+        localStorageService: LocalStorageService? = nil,
+        photoStorageService: PhotoStorageService? = nil
+    ) {
         let storageService = localStorageService ?? LocalStorageService()
         self.localStorageService = storageService
+        self.photoStorageService = photoStorageService ?? PhotoStorageService()
         rolls = storageService.loadRolls()
     }
 
@@ -54,7 +59,16 @@ final class HomeViewModel: ObservableObject {
     }
 
     func deleteRoll(id: UUID) {
-        rolls.removeAll { $0.id == id }
-        try? localStorageService.saveRolls(rolls)
+        let photosToDelete = localStorageService.loadPhotos().filter { $0.rollID == id }
+        let updatedPhotos = localStorageService.loadPhotos().filter { $0.rollID != id }
+        let updatedRolls = rolls.filter { $0.id != id }
+
+        for photo in photosToDelete {
+            try? photoStorageService.deletePhoto(at: photo.localPath)
+        }
+
+        rolls = updatedRolls
+        try? localStorageService.savePhotos(updatedPhotos)
+        try? localStorageService.saveRolls(updatedRolls)
     }
 }

@@ -25,13 +25,15 @@ struct CameraView: View {
     }
 
     var body: some View {
-        ZStack {
-            cameraBackdrop.ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack {
+                cameraBackdrop.ignoresSafeArea()
 
-            if viewModel.authorizationState == .authorized, viewModel.isPreviewReady {
-                captureInterface
-            } else {
-                permissionStateView
+                if viewModel.authorizationState == .authorized, viewModel.isPreviewReady {
+                    captureInterface(in: proxy)
+                } else {
+                    permissionStateView
+                }
             }
         }
         .background {
@@ -82,30 +84,31 @@ struct CameraView: View {
         }
     }
 
-    private var captureInterface: some View {
-        ZStack {
+    private func captureInterface(in proxy: GeometryProxy) -> some View {
+        let metrics = CameraLayoutMetrics(proxy: proxy)
+
+        return ZStack {
             RoundedRectangle(cornerRadius: 0, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
 
             VStack(spacing: 0) {
                 headerBar
+                    .frame(height: metrics.headerHeight)
 
-                Spacer(minLength: 22)
-
-                HStack(alignment: .center, spacing: 34) {
-                    viewfinderPanel
-                    captureRail
+                HStack(alignment: .center, spacing: metrics.railSpacing) {
+                    viewfinderPanel(width: metrics.viewfinderWidth, height: metrics.viewfinderHeight)
+                    captureRail(height: metrics.viewfinderHeight)
                 }
-                .frame(maxWidth: .infinity)
-
-                Spacer(minLength: 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
 
                 bottomBar
+                    .frame(height: metrics.bottomBarHeight)
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 20)
+            .padding(.horizontal, metrics.contentHorizontalPadding)
+            .padding(.top, metrics.topPadding)
+            .padding(.bottom, metrics.bottomPadding)
         }
-        .padding(14)
+        .padding(metrics.outerPadding)
     }
 
     private var headerBar: some View {
@@ -132,7 +135,7 @@ struct CameraView: View {
         }
     }
 
-    private var viewfinderPanel: some View {
+    private func viewfinderPanel(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(
@@ -153,15 +156,15 @@ struct CameraView: View {
                 session: viewModel.previewSession,
                 lockedOrientation: .landscapeRight
             )
-                .aspectRatio(3.0 / 2.0, contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(10)
+                .padding(8)
         }
-        .frame(maxWidth: 880)
+        .frame(width: width, height: height)
         .shadow(color: Color.black.opacity(0.32), radius: 28, y: 16)
     }
 
-    private var captureRail: some View {
+    private func captureRail(height: CGFloat) -> some View {
         VStack(spacing: 26) {
             Spacer()
 
@@ -173,7 +176,7 @@ struct CameraView: View {
 
             Spacer()
         }
-        .frame(width: 118)
+        .frame(width: 122, height: height)
     }
 
     private var permissionStateView: some View {
@@ -449,6 +452,45 @@ struct CameraView: View {
         #else
         return nil
         #endif
+    }
+}
+
+private struct CameraLayoutMetrics {
+    let outerPadding: CGFloat
+    let contentHorizontalPadding: CGFloat
+    let topPadding: CGFloat
+    let bottomPadding: CGFloat
+    let headerHeight: CGFloat
+    let bottomBarHeight: CGFloat
+    let railSpacing: CGFloat
+    let viewfinderWidth: CGFloat
+    let viewfinderHeight: CGFloat
+
+    init(proxy: GeometryProxy) {
+        let size = proxy.size
+        let safeInsets = proxy.safeAreaInsets
+
+        outerPadding = 14
+        contentHorizontalPadding = 28
+        topPadding = max(20, safeInsets.top + 8)
+        bottomPadding = max(18, safeInsets.bottom + 6)
+        headerHeight = 92
+        bottomBarHeight = 88
+        railSpacing = 34
+
+        let availableWidth = max(320, size.width - (outerPadding * 2) - (contentHorizontalPadding * 2))
+        let availableHeight = max(
+            220,
+            size.height - (outerPadding * 2) - topPadding - bottomPadding - headerHeight - bottomBarHeight
+        )
+
+        let railWidth: CGFloat = 122
+        let widthLimitedViewfinder = max(260, availableWidth - railWidth - railSpacing)
+        let heightLimitedViewfinder = availableHeight
+        let fittedWidth = min(widthLimitedViewfinder, heightLimitedViewfinder * 1.5)
+
+        viewfinderWidth = fittedWidth
+        viewfinderHeight = fittedWidth / 1.5
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
+    @State private var rollPendingDeletion: Roll?
 
     var body: some View {
         NavigationStack {
@@ -17,40 +18,62 @@ struct HomeView: View {
             .onAppear {
                 viewModel.reload()
             }
+            .alert(item: $rollPendingDeletion) { roll in
+                Alert(
+                    title: Text("Delete Roll?"),
+                    message: Text("\"\(roll.name)\" and its saved photos will be removed from Snaproll."),
+                    primaryButton: .destructive(Text("Delete")) {
+                        viewModel.deleteRoll(id: roll.id)
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
             .snaprollPreferredOrientations(.portrait)
         }
     }
 
     private var content: some View {
         VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
-                    header
-
-                    ForEach(Array(viewModel.rolls.enumerated()), id: \.element.id) { index, roll in
-                        NavigationLink {
-                            RollView(
-                                roll: roll,
-                                onRollUpdated: { updatedRoll in
-                                    viewModel.updateRoll(updatedRoll)
-                                },
-                                onDelete: {
-                                    viewModel.deleteRoll(id: roll.id)
-                                }
-                            )
-                        } label: {
-                            RollListCard(
-                                roll: roll,
-                                state: cardState(for: roll, index: index)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+            header
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
-                .padding(.bottom, 120)
+                .padding(.bottom, 18)
+
+            List {
+                ForEach(Array(viewModel.rolls.enumerated()), id: \.element.id) { index, roll in
+                    let rollID = roll.id
+
+                    NavigationLink {
+                        RollView(
+                            roll: roll,
+                            onRollUpdated: { updatedRoll in
+                                viewModel.updateRoll(updatedRoll)
+                            },
+                            onDelete: {
+                                viewModel.deleteRoll(id: rollID)
+                            }
+                        )
+                    } label: {
+                        RollListCard(
+                            roll: roll,
+                            state: cardState(for: roll, index: index)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 24, bottom: 10, trailing: 24))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            rollPendingDeletion = roll
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
 
             HomeTabBar()
                 .padding(.horizontal, 16)

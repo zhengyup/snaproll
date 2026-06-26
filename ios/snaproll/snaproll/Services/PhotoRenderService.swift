@@ -1,36 +1,109 @@
+import CoreGraphics
 import CoreImage
 import Foundation
+
+#if canImport(UIKit)
 import UIKit
+#endif
 
 final class PhotoRenderService {
     private let context = CIContext()
-    private let cache = NSCache<NSString, UIImage>()
+    private let cache = NSCache<NSString, RenderedImageBox>()
 
+    #if canImport(UIKit)
     func renderedImage(for image: UIImage, filmStock: FilmStock, cacheKey: String) -> UIImage {
-        let key = "\(filmStock.rawValue)::\(cacheKey)" as NSString
-
-        if let cachedImage = cache.object(forKey: key) {
-            return cachedImage
-        }
-
-        guard let ciImage = CIImage(image: image) else {
+        guard let sourceCGImage = cgImage(from: image) else {
             return image
         }
 
-        let profile = filmProfile(for: filmStock)
-        let renderedCIImage = render(ciImage, with: profile)
-
-        guard let cgImage = context.createCGImage(renderedCIImage, from: renderedCIImage.extent) else {
+        guard let renderedCGImage = renderedCGImage(for: sourceCGImage, filmStock: filmStock, cacheKey: cacheKey) else {
             return image
         }
 
-        let renderedImage = UIImage(
-            cgImage: cgImage,
+        return UIImage(
+            cgImage: renderedCGImage,
             scale: image.scale,
             orientation: image.imageOrientation
         )
-        cache.setObject(renderedImage, forKey: key)
-        return renderedImage
+    }
+    #endif
+
+    func renderedCGImage(for sourceCGImage: CGImage, filmStock: FilmStock, cacheKey: String) -> CGImage? {
+        let rendererVersion = AppConfig.Rendering.useBaseFilmResponse ? "base-film-v2" : "legacy"
+        let key = "\(rendererVersion)::\(filmStock.rawValue)::\(cacheKey)" as NSString
+
+        if let cachedImage = cache.object(forKey: key)?.image {
+            return cachedImage
+        }
+
+        let ciImage = CIImage(cgImage: sourceCGImage)
+        let renderedCIImage: CIImage
+
+        if AppConfig.Rendering.useBaseFilmResponse {
+            let baseFilmImage = applyBaseFilmResponse(to: ciImage)
+            renderedCIImage = render(baseFilmImage, with: experimentalFilmProfile(for: filmStock))
+        } else {
+            renderedCIImage = render(ciImage, with: legacyFilmProfile(for: filmStock))
+        }
+
+        guard let renderedCGImage = context.createCGImage(renderedCIImage, from: renderedCIImage.extent) else {
+            return nil
+        }
+
+        cache.setObject(RenderedImageBox(image: renderedCGImage), forKey: key)
+        return renderedCGImage
+    }
+
+    private func applyBaseFilmResponse(to image: CIImage) -> CIImage {
+        let baseProfile = BaseFilmProfile(
+            toneCurve: [
+                CGPoint(x: 0.00, y: 0.03),
+                CGPoint(x: 0.18, y: 0.15),
+                CGPoint(x: 0.50, y: 0.50),
+                CGPoint(x: 0.80, y: 0.82),
+                CGPoint(x: 1.00, y: 0.965)
+            ],
+            highlightAmount: 0.70,
+            shadowAmount: 0.12,
+            saturation: 0.985,
+            contrast: 0.985,
+            brightness: 0.004,
+            noiseReductionLevel: 0.018,
+            noiseReductionSharpness: 0.07,
+            softeningRadius: 0.62,
+            softeningAmount: 0.12,
+            grainIntensity: 0.012,
+            grainBlurRadius: 0.24
+        )
+
+        var currentImage = image
+        currentImage = applyToneCurve(currentImage, points: baseProfile.toneCurve)
+        currentImage = applyHighlightShadow(
+            currentImage,
+            highlightAmount: baseProfile.highlightAmount,
+            shadowAmount: baseProfile.shadowAmount
+        )
+        currentImage = applyColorControls(
+            currentImage,
+            saturation: baseProfile.saturation,
+            contrast: baseProfile.contrast,
+            brightness: baseProfile.brightness
+        )
+        currentImage = applyNoiseReduction(
+            currentImage,
+            noiseLevel: baseProfile.noiseReductionLevel,
+            sharpness: baseProfile.noiseReductionSharpness
+        )
+        currentImage = applySubtleSoftening(
+            currentImage,
+            radius: baseProfile.softeningRadius,
+            amount: baseProfile.softeningAmount
+        )
+        return applyShadowWeightedGrain(
+            to: currentImage,
+            intensity: baseProfile.grainIntensity,
+            blurRadius: baseProfile.grainBlurRadius
+        )
     }
 
     private func render(_ image: CIImage, with profile: FilmProfile) -> CIImage {
@@ -85,67 +158,67 @@ final class PhotoRenderService {
         return applyVignette(currentImage, intensity: profile.vignetteIntensity, radius: profile.vignetteRadius)
     }
 
-    private func filmProfile(for filmStock: FilmStock) -> FilmProfile {
+    private func legacyFilmProfile(for filmStock: FilmStock) -> FilmProfile {
         switch filmStock {
         case .kodakGold200:
             return FilmProfile(
-                temperature: CGPoint(x: 7050, y: 6),
+                temperature: CGPoint(x: 7350, y: 8),
                 colorMatrix: ColorMatrixProfile(
-                    red: CIVector(x: 1.03, y: 0.02, z: -0.01, w: 0),
-                    green: CIVector(x: 0.01, y: 1.01, z: 0.01, w: 0),
-                    blue: CIVector(x: 0, y: 0, z: 0.96, w: 0)
+                    red: CIVector(x: 1.04, y: 0.02, z: -0.01, w: 0),
+                    green: CIVector(x: 0.01, y: 1.00, z: 0.01, w: 0),
+                    blue: CIVector(x: -0.005, y: 0.00, z: 0.93, w: 0)
                 ),
                 monochromeMix: nil,
                 toneCurve: [
-                    CGPoint(x: 0.00, y: 0.02),
-                    CGPoint(x: 0.23, y: 0.20),
-                    CGPoint(x: 0.52, y: 0.56),
-                    CGPoint(x: 0.80, y: 0.84),
-                    CGPoint(x: 1.00, y: 0.97)
+                    CGPoint(x: 0.00, y: 0.025),
+                    CGPoint(x: 0.20, y: 0.19),
+                    CGPoint(x: 0.50, y: 0.55),
+                    CGPoint(x: 0.78, y: 0.82),
+                    CGPoint(x: 1.00, y: 0.965)
                 ],
-                highlightAmount: 0.68,
-                shadowAmount: 0.20,
-                saturation: 1.05,
-                contrast: 1.03,
-                brightness: 0.008,
-                noiseReductionLevel: 0.014,
-                noiseReductionSharpness: 0.12,
-                softeningRadius: 0.45,
-                softeningAmount: 0.12,
-                grainIntensity: 0.020,
-                grainBlurRadius: 0.22,
-                vignetteIntensity: 0.16,
-                vignetteRadius: 0.95
+                highlightAmount: 0.72,
+                shadowAmount: 0.19,
+                saturation: 1.03,
+                contrast: 1.015,
+                brightness: 0.012,
+                noiseReductionLevel: 0.016,
+                noiseReductionSharpness: 0.10,
+                softeningRadius: 0.52,
+                softeningAmount: 0.11,
+                grainIntensity: 0.016,
+                grainBlurRadius: 0.24,
+                vignetteIntensity: 0.12,
+                vignetteRadius: 0.98
             )
         case .fujifilmSuperia400:
             return FilmProfile(
-                temperature: CGPoint(x: 6150, y: -5),
+                temperature: CGPoint(x: 5950, y: -7),
                 colorMatrix: ColorMatrixProfile(
-                    red: CIVector(x: 0.99, y: 0.01, z: 0, w: 0),
-                    green: CIVector(x: 0.01, y: 1.03, z: 0.015, w: 0),
-                    blue: CIVector(x: 0, y: 0.015, z: 1.05, w: 0)
+                    red: CIVector(x: 0.995, y: 0.005, z: 0.0, w: 0),
+                    green: CIVector(x: 0.012, y: 1.045, z: 0.018, w: 0),
+                    blue: CIVector(x: 0.0, y: 0.018, z: 1.055, w: 0)
                 ),
                 monochromeMix: nil,
                 toneCurve: [
-                    CGPoint(x: 0.00, y: 0.05),
-                    CGPoint(x: 0.24, y: 0.22),
-                    CGPoint(x: 0.50, y: 0.52),
-                    CGPoint(x: 0.78, y: 0.79),
+                    CGPoint(x: 0.00, y: 0.045),
+                    CGPoint(x: 0.22, y: 0.21),
+                    CGPoint(x: 0.50, y: 0.50),
+                    CGPoint(x: 0.77, y: 0.77),
                     CGPoint(x: 1.00, y: 0.95)
                 ],
-                highlightAmount: 0.62,
-                shadowAmount: 0.16,
-                saturation: 0.99,
-                contrast: 1.02,
-                brightness: 0.006,
-                noiseReductionLevel: 0.016,
-                noiseReductionSharpness: 0.10,
-                softeningRadius: 0.42,
-                softeningAmount: 0.11,
-                grainIntensity: 0.017,
-                grainBlurRadius: 0.20,
-                vignetteIntensity: 0.12,
-                vignetteRadius: 0.90
+                highlightAmount: 0.60,
+                shadowAmount: 0.14,
+                saturation: 0.97,
+                contrast: 0.995,
+                brightness: 0.004,
+                noiseReductionLevel: 0.017,
+                noiseReductionSharpness: 0.09,
+                softeningRadius: 0.48,
+                softeningAmount: 0.10,
+                grainIntensity: 0.015,
+                grainBlurRadius: 0.22,
+                vignetteIntensity: 0.10,
+                vignetteRadius: 0.92
             )
         case .ilfordHP5Plus:
             return FilmProfile(
@@ -173,6 +246,73 @@ final class PhotoRenderService {
                 vignetteIntensity: 0.18,
                 vignetteRadius: 0.96
             )
+        }
+    }
+
+    private func experimentalFilmProfile(for filmStock: FilmStock) -> FilmProfile {
+        switch filmStock {
+        case .kodakGold200:
+            return FilmProfile(
+                temperature: CGPoint(x: 8200, y: 12),
+                colorMatrix: ColorMatrixProfile(
+                    red: CIVector(x: 1.070, y: 0.028, z: -0.012, w: 0),
+                    green: CIVector(x: 0.014, y: 1.018, z: 0.014, w: 0),
+                    blue: CIVector(x: -0.010, y: 0.000, z: 0.885, w: 0)
+                ),
+                monochromeMix: nil,
+                toneCurve: [
+                    CGPoint(x: 0.00, y: 0.032),
+                    CGPoint(x: 0.22, y: 0.23),
+                    CGPoint(x: 0.50, y: 0.585),
+                    CGPoint(x: 0.79, y: 0.86),
+                    CGPoint(x: 1.00, y: 0.980)
+                ],
+                highlightAmount: 0.76,
+                shadowAmount: 0.12,
+                saturation: 1.035,
+                contrast: 1.020,
+                brightness: 0.020,
+                noiseReductionLevel: 0.012,
+                noiseReductionSharpness: 0.06,
+                softeningRadius: 0.30,
+                softeningAmount: 0.048,
+                grainIntensity: 0.009,
+                grainBlurRadius: 0.20,
+                vignetteIntensity: 0.07,
+                vignetteRadius: 1.04
+            )
+        case .fujifilmSuperia400:
+            return FilmProfile(
+                temperature: CGPoint(x: 5150, y: -13),
+                colorMatrix: ColorMatrixProfile(
+                    red: CIVector(x: 0.974, y: 0.004, z: 0.000, w: 0),
+                    green: CIVector(x: 0.008, y: 1.045, z: 0.022, w: 0),
+                    blue: CIVector(x: 0.000, y: 0.022, z: 1.095, w: 0)
+                ),
+                monochromeMix: nil,
+                toneCurve: [
+                    CGPoint(x: 0.00, y: 0.046),
+                    CGPoint(x: 0.22, y: 0.230),
+                    CGPoint(x: 0.50, y: 0.490),
+                    CGPoint(x: 0.77, y: 0.742),
+                    CGPoint(x: 1.00, y: 0.934)
+                ],
+                highlightAmount: 0.62,
+                shadowAmount: 0.10,
+                saturation: 0.945,
+                contrast: 0.978,
+                brightness: 0.000,
+                noiseReductionLevel: 0.012,
+                noiseReductionSharpness: 0.06,
+                softeningRadius: 0.28,
+                softeningAmount: 0.048,
+                grainIntensity: 0.008,
+                grainBlurRadius: 0.18,
+                vignetteIntensity: 0.05,
+                vignetteRadius: 0.97
+            )
+        case .ilfordHP5Plus:
+            return legacyFilmProfile(for: .ilfordHP5Plus)
         }
     }
 
@@ -329,18 +469,18 @@ final class PhotoRenderService {
         monochromeNoise.setValue(croppedNoise, forKey: kCIInputImageKey)
         monochromeNoise.setValue(0.0, forKey: kCIInputSaturationKey)
         monochromeNoise.setValue(1.0, forKey: kCIInputBrightnessKey)
-        monochromeNoise.setValue(1.28, forKey: kCIInputContrastKey)
+        monochromeNoise.setValue(1.18, forKey: kCIInputContrastKey)
 
         guard let monochromeNoiseImage = monochromeNoise.outputImage?.cropped(to: image.extent) else {
             return image
         }
 
         noiseTone.setValue(monochromeNoiseImage, forKey: kCIInputImageKey)
-        noiseTone.setValue(CIVector(cgPoint: CGPoint(x: 0.00, y: 0.42)), forKey: "inputPoint0")
+        noiseTone.setValue(CIVector(cgPoint: CGPoint(x: 0.00, y: 0.44)), forKey: "inputPoint0")
         noiseTone.setValue(CIVector(cgPoint: CGPoint(x: 0.25, y: 0.48)), forKey: "inputPoint1")
         noiseTone.setValue(CIVector(cgPoint: CGPoint(x: 0.50, y: 0.50)), forKey: "inputPoint2")
         noiseTone.setValue(CIVector(cgPoint: CGPoint(x: 0.75, y: 0.52)), forKey: "inputPoint3")
-        noiseTone.setValue(CIVector(cgPoint: CGPoint(x: 1.00, y: 0.58)), forKey: "inputPoint4")
+        noiseTone.setValue(CIVector(cgPoint: CGPoint(x: 1.00, y: 0.56)), forKey: "inputPoint4")
 
         guard let tunedNoise = noiseTone.outputImage?.cropped(to: image.extent) else {
             return image
@@ -366,10 +506,10 @@ final class PhotoRenderService {
 
         maskCurve.setValue(invertedLuminance, forKey: kCIInputImageKey)
         maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 0.00, y: 0.00)), forKey: "inputPoint0")
-        maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 0.20, y: 0.10)), forKey: "inputPoint1")
-        maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 0.48, y: 0.72)), forKey: "inputPoint2")
+        maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 0.18, y: 0.08)), forKey: "inputPoint1")
+        maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 0.45, y: 0.74)), forKey: "inputPoint2")
         maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 0.78, y: 0.90)), forKey: "inputPoint3")
-        maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 1.00, y: 0.30)), forKey: "inputPoint4")
+        maskCurve.setValue(CIVector(cgPoint: CGPoint(x: 1.00, y: 0.20)), forKey: "inputPoint4")
 
         guard let grainMask = maskCurve.outputImage?.cropped(to: image.extent) else {
             return image
@@ -410,6 +550,28 @@ final class PhotoRenderService {
         filter.setValue(radius, forKey: kCIInputRadiusKey)
         return filter.outputImage ?? image
     }
+
+    #if canImport(UIKit)
+    private func cgImage(from image: UIImage) -> CGImage? {
+        if let cgImage = image.cgImage {
+            return cgImage
+        }
+
+        if let ciImage = image.ciImage {
+            return context.createCGImage(ciImage, from: ciImage.extent)
+        }
+
+        return nil
+    }
+    #endif
+}
+
+private final class RenderedImageBox {
+    let image: CGImage
+
+    init(image: CGImage) {
+        self.image = image
+    }
 }
 
 private struct FilmProfile {
@@ -430,6 +592,21 @@ private struct FilmProfile {
     let grainBlurRadius: CGFloat
     let vignetteIntensity: CGFloat
     let vignetteRadius: CGFloat
+}
+
+private struct BaseFilmProfile {
+    let toneCurve: [CGPoint]
+    let highlightAmount: CGFloat
+    let shadowAmount: CGFloat
+    let saturation: CGFloat
+    let contrast: CGFloat
+    let brightness: CGFloat
+    let noiseReductionLevel: CGFloat
+    let noiseReductionSharpness: CGFloat
+    let softeningRadius: CGFloat
+    let softeningAmount: CGFloat
+    let grainIntensity: CGFloat
+    let grainBlurRadius: CGFloat
 }
 
 private struct ColorMatrixProfile {
