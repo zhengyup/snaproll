@@ -12,6 +12,20 @@ enum CameraAuthorizationState: Equatable {
     case unavailable
 }
 
+enum CameraFlashMode: Equatable {
+    case off
+    case on
+
+    var avFlashMode: AVCaptureDevice.FlashMode {
+        switch self {
+        case .off:
+            return .off
+        case .on:
+            return .on
+        }
+    }
+}
+
 final class CameraService {
     let session = AVCaptureSession()
 
@@ -20,6 +34,11 @@ final class CameraService {
     private var isConfigured = false
     private var isRunning = false
     private var captureDelegates: [UUID: PhotoCaptureDelegate] = [:]
+    private var activeCaptureDevice: AVCaptureDevice?
+
+    var isFlashAvailable: Bool {
+        activeCaptureDevice?.hasFlash == true
+    }
 
     var authorizationState: CameraAuthorizationState {
         guard AVCaptureDevice.default(for: .video) != nil else {
@@ -96,7 +115,7 @@ final class CameraService {
         }
     }
 
-    func capturePhoto() async throws -> Data {
+    func capturePhoto(flashMode: CameraFlashMode) async throws -> Data {
         guard authorizationState == .authorized else {
             throw CameraServiceError.notAuthorized
         }
@@ -110,7 +129,10 @@ final class CameraService {
             }
 
             let settings = AVCapturePhotoSettings()
-            settings.flashMode = .off
+
+            if self.isFlashAvailable {
+                settings.flashMode = flashMode.avFlashMode
+            }
 
             let captureID = UUID()
             let delegate = PhotoCaptureDelegate(id: captureID) { [weak self] result in
@@ -177,6 +199,7 @@ final class CameraService {
         }
 
         session.addOutput(photoOutput)
+        activeCaptureDevice = camera
         isConfigured = true
     }
 }

@@ -2,8 +2,8 @@ import Foundation
 
 enum AppConfig {
     enum Rolls {
-        // Change this to 24 when Phase 5 development testing is complete.
-        static let minimumShotLimit = 3
+        // Development testing shortcut for renderer tuning. Restore this to 24 before release.
+        static let minimumShotLimit = 1
         static let defaultShotLimit = minimumShotLimit
         static let maximumShotLimit = 72
     }

@@ -4,190 +4,240 @@ struct GalleryView: View {
     let roll: Roll
     let photoItems: [RevealPhotoItem]
     let isLoading: Bool
+    let isExporting: Bool
     let onClose: () -> Void
+    let onExportRoll: () -> Void
+    let onShareRoll: () -> Void
+    let onExportPhoto: (RevealPhotoItem) -> Void
+    let onSharePhoto: (RevealPhotoItem) -> Void
 
-    @State private var selectedIndex = 0
+    @State private var selectedIndex: Int?
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.black.ignoresSafeArea()
+        ZStack {
+            Color.black.ignoresSafeArea()
 
-                if isLoading {
-                    loadingState
-                } else if photoItems.isEmpty {
-                    emptyState
-                } else {
-                    VStack(spacing: 0) {
-                        topChrome
-                            .padding(.horizontal, 24)
-                            .padding(.top, 18)
-
-                        Spacer(minLength: 28)
-
-                        selectedPhotoView(maxWidth: geometry.size.width)
-
-                        Spacer(minLength: 28)
-
-                        thumbnailStrip
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, 28)
-                    }
-                }
-            }
-        }
-        .onAppear {
-            clampSelection()
-        }
-        .onChange(of: photoItems.count) {
-            clampSelection()
-        }
-    }
-
-    private var topChrome: some View {
-        HStack(spacing: 16) {
-            Button {
-                onClose()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(AppTheme.creamText)
-                    .frame(width: 42, height: 42)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            VStack(spacing: 4) {
-                Text(roll.name)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.creamText)
-                    .lineLimit(1)
-
-                Text(headerDateText)
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.softText)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .background(Color.white.opacity(0.08))
-            .clipShape(Capsule())
-
-            Spacer()
-
-            Circle()
-                .fill(Color.white.opacity(0.08))
-                .frame(width: 42, height: 42)
-                .overlay(
-                    Image(systemName: "ellipsis")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(AppTheme.creamText)
-                )
-        }
-    }
-
-    private func selectedPhotoView(maxWidth: CGFloat) -> some View {
-        let currentItem = photoItems[selectedIndex]
-
-        return VStack(spacing: 0) {
-            if let image = currentItem.image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: maxWidth, alignment: .center)
-                    .background(Color.black)
+            if isLoading {
+                loadingState
+            } else if photoItems.isEmpty {
+                emptyState
+            } else if let selectedIndex {
+                singlePhotoView(selectedIndex: selectedIndex)
+                    .transition(.opacity)
             } else {
-                ZStack {
-                    Rectangle()
-                        .fill(Color.black)
-
-                    VStack(spacing: 12) {
-                        Image(systemName: "photo")
-                            .font(.largeTitle)
-                            .foregroundStyle(AppTheme.softText)
-
-                        Text("This exposure is unavailable.")
-                            .font(.headline)
-                            .foregroundStyle(AppTheme.creamText)
-                    }
-                }
-                .frame(width: maxWidth, height: maxWidth * 0.75)
+                contactSheetView
+                    .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
-    private var thumbnailStrip: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+    private var contactSheetView: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(contactSheetTitle)
+                            .font(.system(size: 30, weight: .bold, design: .serif))
+                            .italic()
+                            .foregroundStyle(AppTheme.creamText)
+
+                        Text(roll.film.displayName)
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.color(from: roll.film.accentHex))
+
+                        Text("\(roll.shotLimit) Exposures")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.softText)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 10) {
+                        circleButton(symbol: "chevron.left") {
+                            onClose()
+                        }
+
+                        Menu {
+                            Button("Export Roll") {
+                                onExportRoll()
+                            }
+
+                            Button("Share Roll") {
+                                onShareRoll()
+                            }
+                        } label: {
+                            circleButtonLabel(symbol: "ellipsis")
+                        }
+                    }
+                }
+
+                LazyVGrid(columns: columns, spacing: 10) {
                     ForEach(Array(photoItems.enumerated()), id: \.element.id) { index, item in
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 selectedIndex = index
                             }
-                            proxy.scrollTo(item.id, anchor: .center)
                         } label: {
-                            thumbnail(for: item, isSelected: index == selectedIndex)
+                            ContactSheetCell(item: item, exposureNumber: index + 1)
                         }
                         .buttonStyle(.plain)
-                        .id(item.id)
                     }
                 }
-                .padding(.horizontal, 4)
             }
-            .onAppear {
-                guard photoItems.indices.contains(selectedIndex) else {
-                    return
-                }
-
-                proxy.scrollTo(photoItems[selectedIndex].id, anchor: .center)
-            }
-            .onChange(of: selectedIndex) {
-                guard photoItems.indices.contains(selectedIndex) else {
-                    return
-                }
-
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    proxy.scrollTo(photoItems[selectedIndex].id, anchor: .center)
-                }
-            }
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .padding(.bottom, 28)
         }
     }
 
-    private func thumbnail(for item: RevealPhotoItem, isSelected: Bool) -> some View {
-        Group {
-            if let image = item.image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: thumbnailWidth(for: item), height: 66)
-            } else {
-                ZStack {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.06))
+    private func singlePhotoView(selectedIndex: Int) -> some View {
+        let currentItem = photoItems[selectedIndex]
 
-                    Image(systemName: "photo")
-                        .font(.caption.weight(.medium))
+        return VStack(spacing: 0) {
+            HStack {
+                circleButton(symbol: "chevron.left") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        self.selectedIndex = nil
+                    }
+                }
+
+                Spacer()
+
+                Text("\(selectedIndex + 1) of \(photoItems.count)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.creamText)
+
+                Spacer()
+
+                Menu {
+                    Button(isExporting ? "Exporting..." : "Export Photo") {
+                        onExportPhoto(currentItem)
+                    }
+                    .disabled(isExporting)
+
+                    Button("Share Photo") {
+                        onSharePhoto(currentItem)
+                    }
+                } label: {
+                    circleButtonLabel(symbol: "ellipsis")
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+
+            Spacer(minLength: 28)
+
+            TabView(selection: Binding(
+                get: { selectedIndex },
+                set: { self.selectedIndex = $0 }
+            )) {
+                ForEach(Array(photoItems.enumerated()), id: \.element.id) { index, item in
+                    selectedPhotoPage(item: item)
+                        .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+
+            Spacer(minLength: 18)
+
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(contactSheetTitle)
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.creamText)
+
+                    Text(roll.film.displayName)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(AppTheme.color(from: roll.film.accentHex))
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text("\(selectedIndex + 1) of \(photoItems.count)")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.creamText)
+
+                    Text(capturedText(for: currentItem))
+                        .font(.subheadline)
                         .foregroundStyle(AppTheme.softText)
                 }
-                .frame(width: thumbnailWidth(for: item), height: 66)
             }
+            .padding(.horizontal, 24)
+
+            pageDots(currentIndex: selectedIndex)
+                .padding(.top, 16)
+                .padding(.bottom, 28)
         }
-        .background(Color.black)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(isSelected ? AppTheme.creamText : Color.white.opacity(0.08), lineWidth: isSelected ? 2 : 1)
-        )
-        .opacity(isSelected ? 1 : 0.8)
     }
 
-    private func thumbnailWidth(for item: RevealPhotoItem) -> CGFloat {
-        let clampedRatio = min(max(item.aspectRatio, 0.56), 1.8)
-        return 66 * clampedRatio
+    private func selectedPhotoPage(item: RevealPhotoItem) -> some View {
+        GeometryReader { geometry in
+            VStack {
+                Spacer(minLength: 0)
+
+                if let image = item.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
+                        .background(Color.black)
+                } else {
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.black)
+
+                        VStack(spacing: 12) {
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundStyle(AppTheme.softText)
+
+                            Text("This exposure is unavailable.")
+                                .font(.headline)
+                                .foregroundStyle(AppTheme.creamText)
+                        }
+                    }
+                    .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height * 0.72)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+        }
+    }
+
+    private func circleButton(symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            circleButtonLabel(symbol: symbol)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func circleButtonLabel(symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(AppTheme.creamText)
+            .frame(width: 42, height: 42)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Circle())
+    }
+
+    private func pageDots(currentIndex: Int) -> some View {
+        HStack(spacing: 7) {
+            ForEach(photoItems.indices, id: \.self) { index in
+                Circle()
+                    .fill(index == currentIndex ? AppTheme.creamText : Color.white.opacity(0.18))
+                    .frame(width: 6, height: 6)
+            }
+        }
     }
 
     private var loadingState: some View {
@@ -232,19 +282,44 @@ struct GalleryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var headerDateText: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "dd/MM/yy"
-        return formatter.string(from: roll.createdAt)
+    private var contactSheetTitle: String {
+        roll.name
     }
 
-    private func clampSelection() {
-        guard !photoItems.isEmpty else {
-            selectedIndex = 0
-            return
-        }
+    private func capturedText(for item: RevealPhotoItem) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM yyyy  h:mm a"
+        return formatter.string(from: item.photo.createdAt)
+    }
+}
 
-        selectedIndex = min(selectedIndex, photoItems.count - 1)
+private struct ContactSheetCell: View {
+    let item: RevealPhotoItem
+    let exposureNumber: Int
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.black)
+
+                if let image = item.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: "photo")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+            }
+            .frame(height: 64)
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+
+            Text("\(exposureNumber)")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.softText)
+        }
     }
 }
 
@@ -254,7 +329,12 @@ struct GalleryView_Previews: PreviewProvider {
             roll: Roll.placeholder.markingRevealed(),
             photoItems: [],
             isLoading: false,
-            onClose: {}
+            isExporting: false,
+            onClose: {},
+            onExportRoll: {},
+            onShareRoll: {},
+            onExportPhoto: { _ in },
+            onSharePhoto: { _ in }
         )
     }
 }

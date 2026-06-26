@@ -7,6 +7,7 @@ struct RollView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var roll: Roll
     @State private var showingDeleteConfirmation = false
+    @StateObject private var actionsViewModel = RollActionsViewModel()
 
     init(roll: Roll, onRollUpdated: ((Roll) -> Void)? = nil, onDelete: (() -> Void)? = nil) {
         self.onRollUpdated = onRollUpdated
@@ -43,6 +44,16 @@ struct RollView: View {
         } message: {
             Text("This will remove the roll from local storage on this device.")
         }
+        .sheet(item: $actionsViewModel.shareSheetPayload) { payload in
+            ActivityShareSheet(items: payload.items)
+        }
+        .alert(item: $actionsViewModel.feedbackNotice) { notice in
+            Alert(
+                title: Text(notice.title),
+                message: Text(notice.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
         .snaprollScreenNavigation()
         .snaprollPreferredOrientations(.portrait)
     }
@@ -63,9 +74,24 @@ struct RollView: View {
 
             Spacer()
 
-            if onDelete != nil {
-                Button {
-                    showingDeleteConfirmation = true
+            if showsMoreActions {
+                Menu {
+                    if roll.isRevealed {
+                        Button(actionsViewModel.isPerformingExport ? "Exporting..." : "Export Roll") {
+                            actionsViewModel.exportRoll(roll)
+                        }
+                        .disabled(actionsViewModel.isPerformingExport)
+
+                        Button("Share Roll") {
+                            actionsViewModel.shareRoll(roll)
+                        }
+                    }
+
+                    if onDelete != nil {
+                        Button("Delete Roll", role: .destructive) {
+                            showingDeleteConfirmation = true
+                        }
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.headline.weight(.bold))
@@ -74,7 +100,6 @@ struct RollView: View {
                         .background(Color.white.opacity(0.05))
                         .clipShape(Circle())
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -216,6 +241,10 @@ struct RollView: View {
 
     private var revealButtonTitle: String {
         roll.isRevealed ? "View Roll" : "Reveal Roll"
+    }
+
+    private var showsMoreActions: Bool {
+        onDelete != nil || roll.isRevealed
     }
 }
 

@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import MediaPlayer
 
 @MainActor
 final class CameraViewModel: ObservableObject {
@@ -11,12 +12,15 @@ final class CameraViewModel: ObservableObject {
     @Published private(set) var isCapturing = false
     @Published private(set) var captureFeedbackMessage: String?
     @Published private(set) var shouldDismiss = false
+    @Published private(set) var isFlashAvailable = false
+    @Published private(set) var flashMode: CameraFlashMode = .off
 
     let previewSession: AVCaptureSession
 
     private let cameraService: CameraService
     private let photoStorageService: PhotoStorageService
     private let localStorageService: LocalStorageService
+    private let hardwareShutterService: HardwareShutterService
     private let onRollUpdated: ((Roll) -> Void)?
 
     init(
@@ -24,6 +28,7 @@ final class CameraViewModel: ObservableObject {
         cameraService: CameraService? = nil,
         photoStorageService: PhotoStorageService? = nil,
         localStorageService: LocalStorageService? = nil,
+        hardwareShutterService: HardwareShutterService? = nil,
         onRollUpdated: ((Roll) -> Void)? = nil
     ) {
         self.roll = roll
@@ -31,19 +36,29 @@ final class CameraViewModel: ObservableObject {
         self.cameraService = service
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
         self.localStorageService = localStorageService ?? LocalStorageService()
+        self.hardwareShutterService = hardwareShutterService ?? HardwareShutterService()
         self.onRollUpdated = onRollUpdated
         self.previewSession = service.session
         self.authorizationState = service.authorizationState
     }
 
     func handleAppear() {
+        hardwareShutterService.startListening { [weak self] in
+            self?.capturePhoto()
+        }
+
         Task {
             await prepareCamera()
         }
     }
 
     func handleDisappear() {
+        hardwareShutterService.stopListening()
         cameraService.stopSession()
+    }
+
+    func attachHardwareShutterVolumeView(_ volumeView: MPVolumeView) {
+        hardwareShutterService.attachVolumeView(volumeView)
     }
 
     func retryPermissionFlow() {
@@ -63,7 +78,7 @@ final class CameraViewModel: ObservableObject {
 
         Task {
             do {
-                let capturedData = try await cameraService.capturePhoto()
+                let capturedData = try await cameraService.capturePhoto(flashMode: flashMode)
                 let updatedRoll = try persistCapture(from: capturedData)
 
                 roll = updatedRoll
@@ -88,6 +103,14 @@ final class CameraViewModel: ObservableObject {
 
             isCapturing = false
         }
+    }
+
+    func toggleFlashMode() {
+        guard isFlashAvailable else {
+            return
+        }
+
+        flashMode = flashMode == .off ? .on : .off
     }
 
     private func prepareCamera(forceRequest: Bool = false) async {
@@ -115,6 +138,10 @@ final class CameraViewModel: ObservableObject {
     private func configureAndStartSession() async {
         do {
             try await cameraService.prepareSessionIfNeeded()
+            isFlashAvailable = cameraService.isFlashAvailable
+            if !isFlashAvailable {
+                flashMode = .off
+            }
             isPreviewReady = true
             cameraService.startSession()
         } catch {

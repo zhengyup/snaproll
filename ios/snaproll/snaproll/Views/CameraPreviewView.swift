@@ -6,22 +6,27 @@ import UIKit
 
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
+    let lockedOrientation: AVCaptureVideoOrientation
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
+        view.lockedOrientation = lockedOrientation
         view.updatePreviewOrientation()
         return view
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
         uiView.previewLayer.session = session
+        uiView.lockedOrientation = lockedOrientation
         uiView.updatePreviewOrientation()
     }
 }
 
 final class PreviewView: UIView {
+    var lockedOrientation: AVCaptureVideoOrientation = .landscapeRight
+
     override class var layerClass: AnyClass {
         AVCaptureVideoPreviewLayer.self
     }
@@ -40,12 +45,11 @@ final class PreviewView: UIView {
 
     func updatePreviewOrientation() {
         guard let connection = previewLayer.connection,
-              connection.isVideoOrientationSupported,
-              let windowScene = window?.windowScene else {
+              connection.isVideoOrientationSupported else {
             return
         }
 
-        connection.videoOrientation = windowScene.effectiveGeometry.interfaceOrientation.videoOrientation
+        connection.videoOrientation = lockedOrientation
     }
 }
 #elseif os(macOS)
@@ -83,25 +87,6 @@ final class PreviewHostingView: NSView {
     override func layout() {
         super.layout()
         previewLayer.frame = bounds
-    }
-}
-#endif
-
-#if os(iOS)
-private extension UIInterfaceOrientation {
-    var videoOrientation: AVCaptureVideoOrientation {
-        switch self {
-        case .portrait:
-            return .portrait
-        case .portraitUpsideDown:
-            return .portraitUpsideDown
-        case .landscapeLeft:
-            return .landscapeLeft
-        case .landscapeRight:
-            return .landscapeRight
-        default:
-            return .portrait
-        }
     }
 }
 #endif

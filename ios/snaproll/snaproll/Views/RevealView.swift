@@ -49,6 +49,16 @@ struct RevealView: View {
         .onAppear {
             viewModel.handleAppear()
         }
+        .sheet(item: $viewModel.shareSheetPayload) { payload in
+            ActivityShareSheet(items: payload.items)
+        }
+        .alert(item: $viewModel.feedbackNotice) { notice in
+            Alert(
+                title: Text(notice.title),
+                message: Text(notice.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
         .snaprollScreenNavigation()
         .snaprollPreferredOrientations(.portrait)
     }
@@ -144,8 +154,21 @@ struct RevealView: View {
             roll: viewModel.roll,
             photoItems: viewModel.photoItems,
             isLoading: viewModel.isLoading,
+            isExporting: viewModel.isExporting,
             onClose: {
                 dismiss()
+            },
+            onExportRoll: {
+                viewModel.exportRoll()
+            },
+            onShareRoll: {
+                viewModel.shareRoll()
+            },
+            onExportPhoto: { item in
+                viewModel.exportPhoto(item)
+            },
+            onSharePhoto: { item in
+                viewModel.sharePhoto(item)
             }
         )
     }

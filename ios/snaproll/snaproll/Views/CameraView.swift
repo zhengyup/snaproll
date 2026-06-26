@@ -1,4 +1,5 @@
 import SwiftUI
+import MediaPlayer
 
 struct CameraView: View {
     @Environment(\.dismiss) private var dismiss
@@ -25,15 +26,18 @@ struct CameraView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.background.ignoresSafeArea()
+            cameraBackdrop.ignoresSafeArea()
 
             if viewModel.authorizationState == .authorized, viewModel.isPreviewReady {
-                cameraPreview
+                captureInterface
             } else {
                 permissionStateView
             }
-
-            cameraChrome
+        }
+        .background {
+            HardwareVolumeCaptureView(onReady: viewModel.attachHardwareShutterVolumeView)
+                .frame(width: 2, height: 2)
+                .allowsHitTesting(false)
         }
         .onAppear {
             viewModel.handleAppear()
@@ -49,24 +53,127 @@ struct CameraView: View {
             dismiss()
         }
         .snaprollScreenNavigation()
-        .snaprollPreferredOrientations(.landscape)
+        .snaprollPreferredOrientations(.landscapeRight)
     }
 
-    private var cameraPreview: some View {
-        CameraPreviewView(session: viewModel.previewSession)
-            .ignoresSafeArea()
-            .overlay(
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.45),
-                        .clear,
-                        Color.black.opacity(0.40)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
+    private var cameraBackdrop: some View {
+        ZStack {
+            Color(red: 0.03, green: 0.03, blue: 0.03)
+
+            LinearGradient(
+                colors: [
+                    Color(red: 0.09, green: 0.09, blue: 0.08).opacity(0.65),
+                    Color.clear,
+                    Color.black.opacity(0.85)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
+
+            RadialGradient(
+                colors: [
+                    Color(red: 0.16, green: 0.15, blue: 0.12).opacity(0.24),
+                    Color.clear
+                ],
+                center: .center,
+                startRadius: 40,
+                endRadius: 560
+            )
+        }
+    }
+
+    private var captureInterface: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 0, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
+
+            VStack(spacing: 0) {
+                headerBar
+
+                Spacer(minLength: 22)
+
+                HStack(alignment: .center, spacing: 34) {
+                    viewfinderPanel
+                    captureRail
+                }
+                .frame(maxWidth: .infinity)
+
+                Spacer(minLength: 20)
+
+                bottomBar
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 20)
+        }
+        .padding(14)
+    }
+
+    private var headerBar: some View {
+        ZStack {
+            HStack {
+                circleControl(symbol: "chevron.left") {
+                    dismiss()
+                }
+
+                Spacer()
+            }
+
+            VStack(spacing: 6) {
+                Text(viewModel.roll.name)
+                    .font(.system(size: 28, weight: .bold, design: .serif))
+                    .foregroundStyle(AppTheme.creamText)
+                    .lineLimit(1)
+
+                Text(headerSubtitle)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+            }
+            .frame(maxWidth: 420)
+        }
+    }
+
+    private var viewfinderPanel: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.06),
+                            Color.white.opacity(0.025)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
+
+            CameraPreviewView(
+                session: viewModel.previewSession,
+                lockedOrientation: .landscapeRight
+            )
+                .aspectRatio(3.0 / 2.0, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(10)
+        }
+        .frame(maxWidth: 880)
+        .shadow(color: Color.black.opacity(0.32), radius: 28, y: 16)
+    }
+
+    private var captureRail: some View {
+        VStack(spacing: 26) {
+            Spacer()
+
+            shutterButton
+
+            Spacer(minLength: 32)
+
+            flashButton
+
+            Spacer()
+        }
+        .frame(width: 118)
     }
 
     private var permissionStateView: some View {
@@ -139,62 +246,32 @@ struct CameraView: View {
         .frame(maxWidth: 420)
     }
 
-    private var cameraChrome: some View {
-        VStack {
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(AppTheme.creamText)
-                        .frame(width: 42, height: 42)
-                        .background(Color.black.opacity(0.28))
-                        .clipShape(Circle())
+    private var bottomBar: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(viewModel.roll.film.displayName)
+                    .font(.headline.weight(.medium))
+                    .foregroundStyle(AppTheme.color(from: viewModel.roll.film.accentHex))
+
+                if let message = cameraStatusText {
+                    Text(message)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
                 }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                exposureCounter
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 18)
 
             Spacer()
 
-            VStack(spacing: 18) {
-                if let captureFeedbackMessage = viewModel.captureFeedbackMessage {
-                    captureFeedback(message: captureFeedbackMessage)
-                } else if let statusMessage = liveStatusMessage {
-                    captureFeedback(message: statusMessage)
-                }
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("\(viewModel.roll.capturedMemories) / \(viewModel.roll.shotLimit)")
+                    .font(.system(size: 28, weight: .medium, design: .rounded))
+                    .foregroundStyle(AppTheme.creamText)
 
-                shutterButton
-
-                Text(viewModel.roll.name)
-                    .font(.headline)
-                    .foregroundStyle(Color.white.opacity(0.86))
+                Text(viewModel.roll.exposuresRemaining == 1 ? "1 exposure left" : "\(viewModel.roll.exposuresRemaining) exposures left")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
             }
-            .padding(.bottom, 34)
         }
-    }
-
-    private var exposureCounter: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            Text("EXPOSURES")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(1.4)
-                .foregroundStyle(AppTheme.primaryAction)
-
-            Text("\(viewModel.roll.capturedMemories) / \(viewModel.roll.shotLimit)")
-                .font(.system(size: 22, weight: .medium, design: .rounded))
-                .foregroundStyle(AppTheme.creamText)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.28))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var shutterButton: some View {
@@ -203,23 +280,65 @@ struct CameraView: View {
         } label: {
             ZStack {
                 Circle()
-                    .strokeBorder(shutterStrokeColor, lineWidth: 4)
-                    .frame(width: 86, height: 86)
+                    .fill(Color.white.opacity(0.03))
+                    .frame(width: 106, height: 106)
 
                 Circle()
-                    .fill(shutterFillColor)
-                    .frame(width: 66, height: 66)
+                    .strokeBorder(Color.white.opacity(0.95), lineWidth: 4)
+                    .frame(width: 106, height: 106)
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 82, height: 82)
 
                 if viewModel.isCapturing {
                     ProgressView()
                         .progressViewStyle(.circular)
-                        .tint(AppTheme.creamText)
-                        .scaleEffect(0.85)
+                        .tint(Color.black.opacity(0.72))
+                        .scaleEffect(0.9)
                 }
             }
+            .shadow(color: Color.black.opacity(0.22), radius: 12, y: 8)
         }
         .buttonStyle(.plain)
         .disabled(!canCapture)
+        .opacity(canCapture ? 1 : 0.56)
+    }
+
+    private var flashButton: some View {
+        Button {
+            viewModel.toggleFlashMode()
+        } label: {
+            Image(systemName: viewModel.flashMode == .on ? "bolt.fill" : "bolt.slash.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(viewModel.flashMode == .on ? AppTheme.primaryAction : AppTheme.creamText)
+                .frame(width: 54, height: 54)
+                .background(Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(viewModel.flashMode == .on ? AppTheme.primaryAction.opacity(0.55) : Color.white.opacity(0.05), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(!viewModel.isFlashAvailable)
+        .opacity(viewModel.isFlashAvailable ? 1 : 0.35)
+    }
+
+    private func circleControl(symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(AppTheme.creamText)
+                .frame(width: 52, height: 52)
+                .background(Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     private var permissionIcon: String {
@@ -280,12 +399,22 @@ struct CameraView: View {
         viewModel.authorizationState == .authorized && viewModel.isPreviewReady && !viewModel.isCapturing && !viewModel.roll.isFinished
     }
 
-    private var shutterStrokeColor: Color {
-        canCapture ? Color.white.opacity(0.95) : Color.white.opacity(0.45)
+    private var headerSubtitle: String {
+        if let message = cameraStatusText {
+            return message
+        }
+
+        return viewModel.roll.exposuresRemaining == 1
+            ? "1 exposure left"
+            : "\(viewModel.roll.exposuresRemaining) exposures left"
     }
 
-    private var shutterFillColor: Color {
-        canCapture ? Color.white.opacity(0.16) : Color.white.opacity(0.08)
+    private var cameraStatusText: String? {
+        if let captureFeedbackMessage = viewModel.captureFeedbackMessage {
+            return captureFeedbackMessage
+        }
+
+        return liveStatusMessage
     }
 
     private var liveStatusMessage: String? {
@@ -294,17 +423,6 @@ struct CameraView: View {
         }
 
         return viewModel.statusMessage
-    }
-
-    private func captureFeedback(message: String) -> some View {
-        Text(message)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(AppTheme.creamText)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color.black.opacity(0.32))
-            .clipShape(Capsule())
-            .transition(.opacity)
     }
 
     private var showsPermissionActions: Bool {
@@ -333,6 +451,38 @@ struct CameraView: View {
         #endif
     }
 }
+
+#if os(iOS)
+private struct HardwareVolumeCaptureView: UIViewRepresentable {
+    let onReady: (MPVolumeView) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView(frame: .zero)
+        container.backgroundColor = .clear
+        container.isUserInteractionEnabled = false
+
+        let volumeView = MPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
+        volumeView.alpha = 0.01
+        container.addSubview(volumeView)
+
+        DispatchQueue.main.async {
+            onReady(volumeView)
+        }
+
+        return container
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        guard let volumeView = uiView.subviews.first(where: { $0 is MPVolumeView }) as? MPVolumeView else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            onReady(volumeView)
+        }
+    }
+}
+#endif
 
 struct CameraView_Previews: PreviewProvider {
     static var previews: some View {

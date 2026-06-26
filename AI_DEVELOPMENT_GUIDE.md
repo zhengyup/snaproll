@@ -250,3 +250,74 @@ Initial MVP Order:
 - Decide whether revealed browsing should gain a richer single-photo experience such as zooming, captions, or sequencing details without losing the app's quiet tone.
 - Revisit whether rendered-image disk caching is worthwhile once roll sizes grow beyond the current development configuration.
 - Continue cleaning up the older written spec so the repository's top-level documents match the now-established product direction.
+
+## Phase 10 Completed Work
+
+- Added a dedicated `ExportService` that owns revealed-photo export, whole-roll export, Photos permission flow, and shareable rendered file preparation.
+- Kept export limited to revealed rolls so memories remain hidden until the roll has been fully completed and opened.
+- Added individual photo export and native share-sheet actions to the revealed single-photo viewer.
+- Added whole-roll export and share actions to both the revealed gallery menu and the revealed roll detail menu.
+- Preserved film rendering during export by exporting the rendered display version rather than the hidden original capture.
+- Added generated Photo Library usage descriptions to the app target so export permission requests are correctly described at runtime.
+- Added a native `UIActivityViewController` bridge for Apple’s standard share sheet without introducing custom sharing UI.
+- Updated manual testing guidance for single-photo export, whole-roll export, order preservation, restart behavior, and permission denial handling.
+- Verified the project builds successfully for iPhone without changing capture flow, reveal boundaries, or original local photo storage.
+
+## Phase 10 Architectural Decisions
+
+- `ExportService` composes existing local storage, photo loading, and rendering services so export logic stays out of SwiftUI screens and can be reused by both roll detail and reveal flows.
+- Whole-roll export loads and renders photos in exposure order inside the service, which keeps ordering consistent across export and share entry points.
+- Share-sheet payloads are prepared from temporary rendered JPEG files so sharing uses the processed film look while leaving hidden originals untouched.
+- Photos permission uses the `.readWrite` authorization path so limited-library access can be detected and treated as an allowed export state.
+- `RevealViewModel` owns revealed-photo export and sharing because it already has the selected rendered photo context, while `RollActionsViewModel` keeps roll-level export behavior out of `RollView`.
+- Whole-roll export continues after individual failures and reports a summary rather than aborting at the first failed image.
+
+## Known Limitations
+
+- This phase has been verified with an iPhone-target build, but not with hands-on export testing on a real device from inside Codex.
+- Whole-roll export preserves attempt order, but the Apple Photos app ultimately controls how imported assets are displayed after saving.
+- Shared files are written to a temporary export directory and recreated on demand; there is no persistent exported-file cache.
+- The current camera orientation path still emits older AVFoundation deprecation warnings that are unrelated to export and remain future cleanup work.
+- `PRODUCT_SPEC.md`, `ARCHITECTURE.md`, and `TESTING.md` still contain some older event-based wording, even though the implementation follows the current roll-based Snaproll flow.
+
+## Next Phase
+
+- Run the full export flow on a real iPhone to validate Photos permission prompts, limited-access handling, Apple Photos ordering, and share-sheet destinations end to end.
+- Decide whether a future post-MVP build should add richer export presentation such as progress UI for larger rolls without increasing interface clutter.
+- Reconcile the remaining older top-level product docs so the written specification matches the shipped roll-based MVP behavior.
+
+## Phase 11.1 Completed Work
+
+- Kept the existing `UIImage -> CIImage -> film-specific render path -> Core Image filters -> UIImage` rendering architecture inside `PhotoRenderService`.
+- Introduced a film-profile-based renderer configuration so each stock now has its own tone curve, highlight/shadow response, softening settings, grain settings, and vignette behavior.
+- Replaced the previous heavier reliance on simple saturation and contrast with stock-specific `CIToneCurve` shaping as a primary part of the look.
+- Improved Fujifilm Superia 400 with cooler white balance, subtler channel shaping for greener foliage and cleaner skies, softer highlight roll-off, and restrained grain.
+- Improved Kodak Gold 200 with warmer midtones, soft golden highlights, slightly richer tonal contrast, and a more nostalgic warmth without pushing the image orange.
+- Improved the black-and-white rendering by switching to a richer monochrome conversion with deeper tonal separation, stronger grain, and smoother highlight handling.
+- Added a subtle softening step after noise reduction to reduce the over-crisp digital feel without making images blurry.
+- Reworked grain so it is more visible in shadows and midtones, weaker in bright highlights, and softer overall to feel more like scanned film than a flat overlay.
+- Temporarily reduced `AppConfig.Rolls.minimumShotLimit` to `1` for faster manual renderer tuning, while keeping that decision in a single configuration value.
+- Verified the project builds successfully for iPhone after the renderer changes.
+
+## Phase 11.1 Architectural Decisions
+
+- The renderer still lives entirely in `PhotoRenderService`; reveal, export, and storage layers continue to treat it as the single source of rendered image output.
+- A lightweight internal `FilmProfile` configuration now drives stock-specific parameters without replacing the rendering pipeline or introducing LUTs or third-party tooling.
+- Tone shaping is now handled primarily by `CIToneCurve`, while `CIHighlightShadowAdjust`, color temperature, color matrix adjustments, subtle noise reduction, and grain remain supporting steps.
+- Grain stays procedural and on-device using Core Image primitives so performance remains suitable for the current MVP and rendered image caching still works unchanged.
+- Softening is implemented as a low-opacity blurred overlay after noise reduction, which keeps the images from feeling overly digital without materially changing the renderer’s architecture.
+- `PHASE_11_SUMMARY.md` was referenced in the prompt but is not present in the repository, so this phase followed the active renderer implementation and current development guide as the available source of truth.
+
+## Known Limitations
+
+- This phase was validated with an iPhone-target build, but not with real-device visual tuning from inside Codex.
+- The film look is still an approximation built from fast Core Image operations rather than a scanned-film or LUT-based emulation.
+- Grain remains procedural and subtle by design; it is more film-like than before, but it is still not a stock-accurate grain simulation.
+- Caching behavior is unchanged and remains in-memory only.
+- Older event-based wording still exists in some top-level docs even though the implementation follows the roll-based Snaproll product direction.
+
+## Next Phase
+
+- Tune the updated renderer on a real iPhone using outdoor foliage, skin tones, bright skies, and night scenes to calibrate subtlety against actual captures.
+- Restore `AppConfig.Rolls.minimumShotLimit` from `1` to `24` before release once renderer tuning is complete.
+- Continue tightening the written product docs so the top-level repository documents match the current Snaproll implementation.

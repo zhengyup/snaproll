@@ -33,10 +33,14 @@ final class RevealViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isRevealing = false
     @Published private(set) var statusMessage: String?
+    @Published private(set) var isExporting = false
+    @Published var feedbackNotice: UserFeedbackNotice?
+    @Published var shareSheetPayload: ShareSheetPayload?
 
     private let localStorageService: LocalStorageService
     private let photoStorageService: PhotoStorageService
     private let photoRenderService: PhotoRenderService
+    private let exportService: ExportService
     private let onRollUpdated: ((Roll) -> Void)?
 
     init(
@@ -44,12 +48,18 @@ final class RevealViewModel: ObservableObject {
         localStorageService: LocalStorageService? = nil,
         photoStorageService: PhotoStorageService? = nil,
         photoRenderService: PhotoRenderService? = nil,
+        exportService: ExportService? = nil,
         onRollUpdated: ((Roll) -> Void)? = nil
     ) {
         self.roll = roll
         self.localStorageService = localStorageService ?? LocalStorageService()
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
         self.photoRenderService = photoRenderService ?? PhotoRenderService()
+        self.exportService = exportService ?? ExportService(
+            localStorageService: self.localStorageService,
+            photoStorageService: self.photoStorageService,
+            photoRenderService: self.photoRenderService
+        )
         self.onRollUpdated = onRollUpdated
     }
 
@@ -93,6 +103,108 @@ final class RevealViewModel: ObservableObject {
             }
 
             isRevealing = false
+        }
+    }
+
+    func exportRoll() {
+        guard roll.isRevealed else {
+            feedbackNotice = UserFeedbackNotice(
+                title: "Export Unavailable",
+                message: "Reveal this roll before exporting its memories."
+            )
+            return
+        }
+
+        isExporting = true
+
+        Task {
+            defer {
+                isExporting = false
+            }
+
+            do {
+                let summary = try await exportService.exportRenderedRollToLibrary(for: roll)
+                feedbackNotice = UserFeedbackNotice(
+                    title: "Export Finished",
+                    message: "\(summary.exportedCount) exported\n\(summary.failedCount) failed"
+                )
+            } catch {
+                feedbackNotice = UserFeedbackNotice(
+                    title: "Export Failed",
+                    message: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    func shareRoll() {
+        do {
+            let shareItems = try exportService.shareItemsForRenderedRoll(roll)
+            shareSheetPayload = ShareSheetPayload(items: shareItems)
+        } catch {
+            feedbackNotice = UserFeedbackNotice(
+                title: "Share Failed",
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    func exportPhoto(_ item: RevealPhotoItem) {
+        guard let image = item.image else {
+            feedbackNotice = UserFeedbackNotice(
+                title: "Export Failed",
+                message: ExportServiceError.photoUnavailable.localizedDescription
+            )
+            return
+        }
+
+        isExporting = true
+
+        Task {
+            defer {
+                isExporting = false
+            }
+
+            do {
+                try await exportService.exportRenderedPhotoToLibrary(
+                    image,
+                    roll: roll,
+                    exposureNumber: item.photo.exposureNumber
+                )
+                feedbackNotice = UserFeedbackNotice(
+                    title: "Saved to Photos",
+                    message: "The rendered photo was exported to your library."
+                )
+            } catch {
+                feedbackNotice = UserFeedbackNotice(
+                    title: "Export Failed",
+                    message: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    func sharePhoto(_ item: RevealPhotoItem) {
+        guard let image = item.image else {
+            feedbackNotice = UserFeedbackNotice(
+                title: "Share Failed",
+                message: ExportServiceError.photoUnavailable.localizedDescription
+            )
+            return
+        }
+
+        do {
+            let shareItems = try exportService.shareItemsForRenderedPhoto(
+                image,
+                roll: roll,
+                exposureNumber: item.photo.exposureNumber
+            )
+            shareSheetPayload = ShareSheetPayload(items: shareItems)
+        } catch {
+            feedbackNotice = UserFeedbackNotice(
+                title: "Share Failed",
+                message: error.localizedDescription
+            )
         }
     }
 
