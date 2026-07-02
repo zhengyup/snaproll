@@ -158,7 +158,7 @@ final class CameraViewModel: ObservableObject {
         let photo = Photo(
             id: photoID,
             rollID: roll.id,
-            localPath: savedURL.path,
+            localPath: photoStorageService.persistentLocalPath(for: savedURL),
             createdAt: .now,
             exposureNumber: nextExposureNumber
         )

@@ -19,19 +19,22 @@ final class HomeViewModel: ObservableObject {
 
     private let localStorageService: LocalStorageService
     private let photoStorageService: PhotoStorageService
+    private let storageIntegrityService: StorageIntegrityService
 
     init(
         localStorageService: LocalStorageService? = nil,
-        photoStorageService: PhotoStorageService? = nil
+        photoStorageService: PhotoStorageService? = nil,
+        storageIntegrityService: StorageIntegrityService? = nil
     ) {
         let storageService = localStorageService ?? LocalStorageService()
         self.localStorageService = storageService
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
-        rolls = storageService.loadRolls()
+        self.storageIntegrityService = storageIntegrityService ?? StorageIntegrityService(localStorageService: storageService)
+        refreshFromStorage()
     }
 
     func reload() {
-        rolls = localStorageService.loadRolls()
+        refreshFromStorage()
     }
 
     func createRoll(name: String, film: FilmStock, shotLimit: Int) -> Roll {
@@ -70,5 +73,10 @@ final class HomeViewModel: ObservableObject {
         rolls = updatedRolls
         try? localStorageService.savePhotos(updatedPhotos)
         try? localStorageService.saveRolls(updatedRolls)
+    }
+
+    private func refreshFromStorage() {
+        storageIntegrityService.reconcile()
+        rolls = localStorageService.loadRolls()
     }
 }

@@ -19,14 +19,8 @@ final class LocalStorageService {
     }
 
     func loadRolls() -> [Roll] {
-        guard fileManager.fileExists(atPath: rollsFileURL.path) else {
-            return []
-        }
-
         do {
-            let data = try Data(contentsOf: rollsFileURL)
-            return try decoder.decode([Roll].self, from: data)
-                .sorted { $0.createdAt > $1.createdAt }
+            return try loadRollsForIntegrityCheck()
         } catch {
             return []
         }
@@ -38,14 +32,8 @@ final class LocalStorageService {
     }
 
     func loadPhotos() -> [Photo] {
-        guard fileManager.fileExists(atPath: photosFileURL.path) else {
-            return []
-        }
-
         do {
-            let data = try Data(contentsOf: photosFileURL)
-            return try decoder.decode([Photo].self, from: data)
-                .sorted { $0.createdAt < $1.createdAt }
+            return try loadPhotosForIntegrityCheck()
         } catch {
             return []
         }
@@ -54,6 +42,26 @@ final class LocalStorageService {
     func savePhotos(_ photos: [Photo]) throws {
         let data = try encoder.encode(photos)
         try data.write(to: photosFileURL, options: .atomic)
+    }
+
+    func loadRollsForIntegrityCheck() throws -> [Roll] {
+        guard fileManager.fileExists(atPath: rollsFileURL.path) else {
+            return []
+        }
+
+        let data = try Data(contentsOf: rollsFileURL)
+        return try decoder.decode([Roll].self, from: data)
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func loadPhotosForIntegrityCheck() throws -> [Photo] {
+        guard fileManager.fileExists(atPath: photosFileURL.path) else {
+            return []
+        }
+
+        let data = try Data(contentsOf: photosFileURL)
+        return try decoder.decode([Photo].self, from: data)
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     private var rollsFileURL: URL {

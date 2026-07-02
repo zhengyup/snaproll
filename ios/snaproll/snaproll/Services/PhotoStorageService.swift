@@ -3,6 +3,7 @@ import UIKit
 
 final class PhotoStorageService {
     private let fileManager: FileManager
+    private let legacyStoragePathMarker = "/Snaproll/Rolls/"
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -20,8 +21,19 @@ final class PhotoStorageService {
         return fileURL
     }
 
+    func persistentLocalPath(for fileURL: URL) -> String {
+        let storageRoot = storageRootDirectoryURL().path
+        let filePath = fileURL.path
+
+        guard filePath.hasPrefix(storageRoot + "/") else {
+            return filePath
+        }
+
+        return String(filePath.dropFirst(storageRoot.count + 1))
+    }
+
     func deletePhoto(at localPath: String) throws {
-        let fileURL = URL(fileURLWithPath: localPath)
+        let fileURL = resolvedFileURL(for: localPath)
 
         guard fileManager.fileExists(atPath: fileURL.path) else {
             return
@@ -31,26 +43,67 @@ final class PhotoStorageService {
     }
 
     func loadImage(at localPath: String) -> UIImage? {
-        guard fileManager.fileExists(atPath: localPath) else {
+        let resolvedURL = resolvedFileURL(for: localPath)
+
+        guard fileManager.fileExists(atPath: resolvedURL.path) else {
             return nil
         }
 
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: localPath)) else {
+        guard let data = try? Data(contentsOf: resolvedURL) else {
             return nil
         }
 
         return UIImage(data: data)
     }
 
+    func normalizedLocalPath(_ localPath: String) -> String {
+        let resolvedURL = resolvedFileURL(for: localPath)
+        return persistentLocalPath(for: resolvedURL)
+    }
+
+    func fileExists(at localPath: String) -> Bool {
+        fileManager.fileExists(atPath: resolvedFileURL(for: localPath).path)
+    }
+
     private func rollDirectoryURL(for rollID: UUID) throws -> URL {
-        let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? fileManager.temporaryDirectory
-        let snaprollDirectory = baseDirectory.appendingPathComponent("Snaproll", isDirectory: true)
-        let rollsDirectory = snaprollDirectory.appendingPathComponent("Rolls", isDirectory: true)
+        let rollsDirectory = storageRootDirectoryURL()
         let rollDirectory = rollsDirectory.appendingPathComponent(rollID.uuidString, isDirectory: true)
 
         try fileManager.createDirectory(at: rollDirectory, withIntermediateDirectories: true)
         return rollDirectory
+    }
+
+    private func storageRootDirectoryURL() -> URL {
+        let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        let snaprollDirectory = baseDirectory.appendingPathComponent("Snaproll", isDirectory: true)
+        return snaprollDirectory.appendingPathComponent("Rolls", isDirectory: true)
+    }
+
+    private func resolvedFileURL(for localPath: String) -> URL {
+        if localPath.hasPrefix("/") {
+            let absoluteURL = URL(fileURLWithPath: localPath)
+
+            if fileManager.fileExists(atPath: absoluteURL.path) {
+                return absoluteURL
+            }
+
+            if let relativeSuffix = relativeSuffixFromLegacyAbsolutePath(localPath) {
+                return storageRootDirectoryURL().appendingPathComponent(relativeSuffix, isDirectory: false)
+            }
+
+            return absoluteURL
+        }
+
+        return storageRootDirectoryURL().appendingPathComponent(localPath, isDirectory: false)
+    }
+
+    private func relativeSuffixFromLegacyAbsolutePath(_ absolutePath: String) -> String? {
+        guard let markerRange = absolutePath.range(of: legacyStoragePathMarker) else {
+            return nil
+        }
+
+        return String(absolutePath[markerRange.upperBound...])
     }
 }
 
