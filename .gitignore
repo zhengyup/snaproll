@@ -35,4 +35,6 @@ film-references/
 render-output/
 test-images/
 
+.env
+
 EOF
