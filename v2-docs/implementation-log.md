@@ -89,3 +89,117 @@ One implementation detail was added to preserve an architectural invariant:
 - `profiles.display_name` was relaxed to nullable so providers like Apple Sign In can create accounts before a display name is collected.
 - Exposure immutability was narrowed so only `storage_path`, `captured_at`, `uploaded_at`, and `render_seed` are frozen after an exposure is filled.
 - Explicit deny-all placeholder RLS policies were removed while keeping RLS enabled on every table.
+
+## Phase 2 – RPC Foundation
+
+### Migration filename
+
+- `supabase/migrations/20260705103000_phase_2_rpc_foundation.sql`
+
+### RPCs added
+
+- `public.create_roll(...)`
+- `public.join_roll(...)`
+- `public.leave_roll(...)`
+- `public.start_roll(...)`
+- `public.reveal_roll(...)`
+- `public.force_reveal_roll(...)`
+- `public.regenerate_invite(...)`
+- `public.complete_exposure(...)`
+
+### Helper functions added
+
+- `public.require_authenticated_profile_id()`
+- `public.is_valid_film_stock_id(text)`
+- `public.generate_secure_token()`
+- `public.generate_render_seed()`
+
+### Validation coverage
+
+- All RPCs require an authenticated caller with an existing `profiles` row.
+- Ownership is enforced for creator-only operations:
+  - `start_roll()`
+  - `reveal_roll()`
+  - `force_reveal_roll()`
+  - `regenerate_invite()`
+- `join_roll()` validates:
+  - active invite
+  - shared-roll type
+  - pre-start state
+  - duplicate participation
+  - participant cap
+- `leave_roll()` validates:
+  - pre-start state
+  - participant membership
+  - creator cannot leave
+- `start_roll()` validates:
+  - creator ownership
+  - startable lifecycle state
+  - participant count
+  - participant cap
+  - valid film stock
+  - valid exposure count
+  - exposures have not already been created
+- `reveal_roll()` validates creator ownership and `READY_TO_REVEAL`
+- `force_reveal_roll()` validates creator ownership and requires the roll to have started but not yet be revealed
+- `regenerate_invite()` validates creator ownership, shared-roll type, and pre-start state
+- `complete_exposure()` validates:
+  - exposure ownership
+  - participant status
+  - roll status `SHOOTING`
+  - exposure still empty
+  - non-empty JPEG-like storage path
+
+### State transitions implemented
+
+- `create_roll()`:
+  - creates the roll
+  - inserts the creator as the first participant
+  - creates an active invite for shared rolls
+  - creates no exposures
+- `join_roll()` inserts a participant before start
+- `leave_roll()` removes a participant before start
+- `start_roll()`:
+  - creates exposure slots transactionally for every participant
+  - marks participants `SHOOTING`
+  - marks the roll `SHOOTING`
+  - deactivates active invites
+- `reveal_roll()` marks the roll `REVEALED`
+- `force_reveal_roll()` marks the roll `REVEALED` without requiring all participants to finish
+- `regenerate_invite()` revokes the previous active invite and inserts a new token
+- `complete_exposure()`:
+  - fills `storage_path`
+  - sets `uploaded_at`
+  - marks the participant `FINISHED` when all their exposures are filled
+  - marks the roll `READY_TO_REVEAL` when all exposures in the roll are filled
+
+### Assumptions made
+
+- Security-definer RPCs are used because RLS is enabled and no table policies exist yet.
+- Film stock validation currently accepts the same identifiers already used by the iOS V1/V2 code path:
+  - `kodakGold200`
+  - `fujifilmSuperia400`
+  - `ilfordHP5Plus`
+- `complete_exposure()` currently validates `storage_path` as a non-empty JPEG-like object path because the final storage path convention has not been specified yet.
+- `captured_at` is not populated by `complete_exposure()` in this phase because the RPC contract only provided `exposure_id` and `storage_path`.
+
+### Deviations / documented decisions
+
+- To reconcile the architecture with the required initial roll states, `start_roll()` accepts:
+  - `WAITING_FOR_PARTICIPANTS` for shared rolls
+  - `DRAFT` for personal rolls
+
+  Without this, personal rolls would remain stuck in `DRAFT` with no path to exposure creation.
+
+- `regenerate_invite()` is limited to shared rolls before start. Regenerating invites after start was treated as invalid because joining is no longer allowed once the roll is locked.
+
+### Phase 2 follow-up adjustments
+
+- `start_roll()` no longer revokes or deactivates invites. Invite links remain viewable after start, while `join_roll()` continues to reject because the roll is no longer in `WAITING_FOR_PARTICIPANTS`.
+- `participant_cap` is now validated consistently as `1 <= participant_cap <= 10`.
+- Film stock validation was relaxed to require only a present, non-empty `film_stock_id` until a canonical V2 film catalogue exists.
+- `complete_exposure()` now enforces the exact canonical storage path format:
+  `rolls/{roll_id}/participants/{participant_id}/{exposure_number}.jpg`
+- Shared roll participation now requires the caller to have a non-null, non-empty `profiles.display_name` for:
+  - `create_roll(type = 'SHARED')`
+  - `join_roll()`
