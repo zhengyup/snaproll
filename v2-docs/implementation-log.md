@@ -199,7 +199,30 @@ One implementation detail was added to preserve an architectural invariant:
 - `participant_cap` is now validated consistently as `1 <= participant_cap <= 10`.
 - Film stock validation was relaxed to require only a present, non-empty `film_stock_id` until a canonical V2 film catalogue exists.
 - `complete_exposure()` now enforces the exact canonical storage path format:
-  `rolls/{roll_id}/participants/{participant_id}/{exposure_number}.jpg`
+  `rolls/{roll_id}/participants/{participant_id}/{exposure_number_padded_to_3_digits}.jpg`
 - Shared roll participation now requires the caller to have a non-null, non-empty `profiles.display_name` for:
   - `create_roll(type = 'SHARED')`
   - `join_roll()`
+
+### Phase 2 test script added
+
+- Added a plug-and-play SQL smoke test script at:
+  `supabase/tests/rpc_happy_path.sql`
+- The script:
+  - cleans previous fixture data
+  - creates fixture `auth.users`
+  - creates fixture `profiles`
+  - simulates `auth.uid()` with `set_config`
+  - runs the shared-roll happy path end-to-end
+  - asserts expected database state with `raise exception`
+  - verifies padded path handling with `001.jpg`
+  - includes a final cleanup section
+
+### Phase 2 follow-up migration added
+
+- Added `supabase/migrations/20260706160000_phase_2_rpc_follow_up_fixes.sql`
+- This follow-up migration exists because the original Phase 2 RPC migration had already been applied to the cloud project.
+- It fixes:
+  - the `join_roll()` PL/pgSQL ambiguity caused by `RETURNS TABLE` output names colliding with unqualified `roll_id` references
+  - the canonical padded storage path contract in `complete_exposure()` so exposure paths use `001.jpg` style numbering
+- The original Phase 2 migration file was restored to its previously applied form so local migration history matches what was actually deployed.
