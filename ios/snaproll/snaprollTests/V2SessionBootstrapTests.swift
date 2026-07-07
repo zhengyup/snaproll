@@ -76,6 +76,8 @@ private struct FakeAuthRepository: AuthRepository {
     func currentUserID() async throws -> UUID? {
         try result.get()?.userID
     }
+
+    func signOut() async throws {}
 }
 
 private enum FakeBootstrapError: LocalizedError {

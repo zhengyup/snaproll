@@ -7,11 +7,25 @@ struct V2DependencyContainer {
     let exposureRepository: any ExposureRepository
     let inviteRepository: any InviteRepository
 
-    static func live() -> V2DependencyContainer {
+    static func live(
+        authenticationMode: V2AuthenticationMode = AppConfig.V2.authenticationMode
+    ) -> V2DependencyContainer {
         let clientProvider = V2SupabaseClientProvider()
+        let authRepository: any AuthRepository
+
+        switch authenticationMode {
+        case .standard:
+            authRepository = SupabaseAuthRepository(clientProvider: clientProvider)
+        case .development(let identity):
+            authRepository = DevelopmentAuthRepository(
+                clientProvider: clientProvider,
+                identityProvider: FixedDevelopmentAuthIdentityProvider(identity: identity),
+                sessionStore: UserDefaultsDevelopmentAuthSessionStore()
+            )
+        }
 
         return V2DependencyContainer(
-            authRepository: SupabaseAuthRepository(clientProvider: clientProvider),
+            authRepository: authRepository,
             rollRepository: SupabaseRollRepository(clientProvider: clientProvider),
             participantRepository: SupabaseParticipantRepository(clientProvider: clientProvider),
             exposureRepository: SupabaseExposureRepository(clientProvider: clientProvider),

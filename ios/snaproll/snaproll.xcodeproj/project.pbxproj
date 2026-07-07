@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3A16D4E22FFF4057000E6B61 /* development.env in Resources */ = {isa = PBXBuildFile; fileRef = 3A16D4E12FFF4057000E6B61 /* development.env */; };
 		3A5BE3522FFC1C6500AE37A6 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 3A5BE3512FFC1C6500AE37A6 /* Supabase */; };
 /* End PBXBuildFile section */
 
@@ -28,6 +29,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		3A16D4E12FFF4057000E6B61 /* development.env */ = {isa = PBXFileReference; lastKnownFileType = text; name = development.env; path = ../../.env; sourceTree = SOURCE_ROOT; };
 		3A56D7522FEBFC5000C21B6C /* snaproll.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = snaproll.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A56D75F2FEBFC5100C21B6C /* snaprollTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = snaprollTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A56D7692FEBFC5100C21B6C /* snaprollUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = snaprollUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -80,6 +82,7 @@
 		3A56D7492FEBFC5000C21B6C = {
 			isa = PBXGroup;
 			children = (
+				3A16D4E12FFF4057000E6B61 /* development.env */,
 				3A56D7542FEBFC5000C21B6C /* snaproll */,
 				3A56D7622FEBFC5100C21B6C /* snaprollTests */,
 				3A56D76C2FEBFC5100C21B6C /* snaprollUITests */,
@@ -221,6 +224,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3A16D4E22FFF4057000E6B61 /* development.env in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -418,7 +422,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Snaproll needs camera access so you can capture memories directly into your roll.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
-				INFOPLIST_KEY_SNAPROLL_SUPABASE_ANON_KEY = "";
+				INFOPLIST_KEY_SNAPROLL_SUPABASE_PUBLISHABLE_KEY = "";
 				INFOPLIST_KEY_SNAPROLL_SUPABASE_URL = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -477,7 +481,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Snaproll needs camera access so you can capture memories directly into your roll.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
-				INFOPLIST_KEY_SNAPROLL_SUPABASE_ANON_KEY = "";
+				INFOPLIST_KEY_SNAPROLL_SUPABASE_PUBLISHABLE_KEY = "";
 				INFOPLIST_KEY_SNAPROLL_SUPABASE_URL = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

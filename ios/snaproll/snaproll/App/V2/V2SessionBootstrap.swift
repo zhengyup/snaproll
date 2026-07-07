@@ -20,6 +20,10 @@ struct V2SessionBootstrapper: Sendable {
 
         return .signedIn(session)
     }
+
+    func signOut() async throws {
+        try await authRepository.signOut()
+    }
 }
 
 @MainActor
@@ -66,6 +70,18 @@ final class V2SessionStore: ObservableObject {
     func retry() async {
         hasBootstrapped = true
         await bootstrap()
+    }
+
+    func signOut() async {
+        do {
+            try await bootstrapper.signOut()
+            transition(to: .signedOut, reason: "Signed out")
+        } catch {
+            transition(
+                to: .failed(error.localizedDescription),
+                reason: "Sign out failed: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func bootstrap() async {
@@ -125,6 +141,13 @@ struct V2BootstrapEntryView: View {
                 }
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if AppConfig.V2.isDevelopmentAuthenticationEnabled {
+                V2DevelopmentIdentityBadge(state: sessionStore.state)
+                    .padding(.top, 16)
+                    .padding(.trailing, 16)
+            }
+        }
         .task {
             await sessionStore.bootstrapIfNeeded()
         }
@@ -147,5 +170,46 @@ private struct V2BootstrapStatusView: View {
                 .frame(maxWidth: 420)
         }
         .padding(24)
+    }
+}
+
+private struct V2DevelopmentIdentityBadge: View {
+    let state: V2SessionState
+
+    private var identityLabel: String {
+        AppConfig.V2.developmentIdentity.displayName
+    }
+
+    private var sessionLabel: String? {
+        guard case .signedIn(let session) = state else {
+            return nil
+        }
+
+        return session.displayName
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Dev User")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(identityLabel)
+                .font(.caption.weight(.semibold))
+
+            if let sessionLabel {
+                Text(sessionLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
     }
 }

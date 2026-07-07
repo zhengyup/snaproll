@@ -971,6 +971,22 @@ Motivation:
 
 This keeps authentication concerns isolated while allowing the shared-roll product to move forward before production sign-in is finalized.
 
+Development identities are temporary tooling for V2 buildout, but they must still flow through `AuthRepository` and the same cloud-backed ownership boundaries that production authentication will use later.
+
+Before shared rolls are implemented, Snaproll V2 must prove that personal rolls work end-to-end on the cloud-backed architecture.
+
+That proving ground includes:
+
+```text
+- current-user ownership
+- personal roll creation
+- exposure slot creation and loading
+- capture, upload, and sync
+- reveal and gallery loading
+```
+
+Shared roll implementation should reuse the proven V2 personal roll pipeline rather than inventing a separate path first.
+
 ---
 
 # 16. Gallery Behaviour
@@ -1160,39 +1176,38 @@ Deliverable:
 Shared-roll development can proceed without Apple or Google production auth flows.
 ```
 
-## Phase 7 — Shared Roll Lobby
+## Phase 7 — V2 Cloud Personal Roll Foundation
 
 Implement:
 
-* Create shared roll
-* Invite link display
-* Join roll
-* Participant list
-* Remove/leave before Start
-* Polling refresh
+* Enforce current-user ownership / belongs-to relationship
+* Create personal rolls through V2 repositories and RPCs
+* Fetch and render cloud-backed personal rolls by current development identity
+* Verify switching development identity changes visible rolls
+* Keep V1 behavior unchanged behind the feature flag
 
 Deliverable:
 
 ```text
-Shared lobby works end-to-end.
+Cloud-backed personal rolls are user-scoped and visible through the V2 path.
 ```
 
-## Phase 8 — Start Roll & Exposure Generation
+## Phase 8 — V2 Personal Roll Shooting & Exposure Slots
 
 Implement:
 
-* start_roll RPC integration
-* Exposure slot sync into SwiftData
-* Camera entry from shared roll
-* Locked roll settings after Start
+* Start and use a personal roll through the V2 cloud lifecycle
+* Create and fetch exposure slots
+* Connect V2 personal roll detail to the local exposure model
+* Preserve hidden-film behavior
 
 Deliverable:
 
 ```text
-Shared roll enters SHOOTING with exposure slots.
+V2 personal rolls enter shooting with cloud-backed exposure slots.
 ```
 
-## Phase 9 — Capture → Upload → Sync
+## Phase 9 — V2 Capture → Upload → Sync
 
 Implement:
 
@@ -1204,75 +1219,118 @@ Implement:
 * Local sync states
 * Retry logic
 * Metadata pending recovery
+* Simulator or debug capture support for end-to-end testing
 
 Deliverable:
 
 ```text
-Photos upload reliably without blocking capture.
+Personal-roll photos upload reliably without blocking capture.
 ```
 
-## Phase 10 — Reveal Flow
+## Phase 10 — V2 Personal Reveal & Gallery
 
 Implement:
 
-* Participant completion detection
-* Roll polling for READY_TO_REVEAL
-* Creator Reveal CTA
-* reveal_roll RPC
-* Reveal animation handoff
-
-Deliverable:
-
-```text
-Shared roll can be revealed.
-```
-
-## Phase 11 — Shared Gallery
-
-Implement:
-
-* Fetch revealed exposures
-* Download participant originals
+* Transition personal rolls to `READY_TO_REVEAL`
+* Reveal through RPC
+* Fetch cloud-backed exposures
 * Render locally
-* Cache rendered previews
-* Group by participant
+* Show the V2 personal gallery
 
 Deliverable:
 
 ```text
-Revealed shared gallery works.
+The V2 personal roll experience works end-to-end through reveal and gallery.
 ```
 
-## Phase 12 — Production Authentication
+## Phase 11 — Shared Roll Creation & Lobby
+
+Implement:
+
+* Create shared rolls
+* Invite token flow
+* Participant list
+* Creator controls
+* Lobby polling and manual refresh
+
+Deliverable:
+
+```text
+Shared roll creation and lobby flows work on top of the proven personal pipeline.
+```
+
+## Phase 12 — Invite / Join / Multi-Identity Testing
+
+Implement:
+
+* Join via invite
+* Test multiple development identities across simulators and devices
+* Verify participant ownership and participant-specific views
+
+Deliverable:
+
+```text
+Shared identity and join flows are validated across multiple development users.
+```
+
+## Phase 13 — Shared Start Roll & Exposure Generation
+
+Implement:
+
+* Lock participants
+* Create exposure slots per participant
+* Enforce immutable roll settings after start
+
+Deliverable:
+
+```text
+Shared rolls enter shooting with participant-scoped exposure slots.
+```
+
+## Phase 14 — Shared Capture / Reveal / Gallery
+
+Implement:
+
+* Participant-specific capture and upload
+* Roll readiness across participants
+* Creator reveal
+* Gallery grouped by participant
+
+Deliverable:
+
+```text
+Shared capture, reveal, and gallery reuse the personal-roll V2 pipeline successfully.
+```
+
+## Phase 15 — Production Authentication
 
 Implement:
 
 * Replace development auth with production auth providers
-* Google Sign-In initially
-* Apple Sign In before App Store release
+* Google Sign-In initially if desired
+* Apple Sign In before App Store or TestFlight release if required
 * Preserve `AuthRepository` boundary
 
 Deliverable:
 
 ```text
-Production authentication is integrated without changing shared-roll logic.
+Production authentication replaces development auth without changing shared-roll logic.
 ```
 
-## Phase 13 — Polling, Offline Refinement, Production Hardening
+## Phase 16 — Polling, Offline Refinement, Production Hardening
 
 Implement:
 
-* Polling refinements
-* Offline recovery polish
-* Failed upload UI
-* Retry controls
-* Force reveal and exceptional-flow hardening
-* End-to-end testing and beta stabilization
+* Polling refresh
+* Offline edge cases
+* Failure recovery
+* Cleanup
+* QA and beta-readiness
 
 Deliverable:
 
 ```text
-V2 beta-ready.
+V2 is hardened for production and beta use.
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 ## Roadmap Placement
 
-This document now maps to roadmap Phase 11.
+This document now maps to roadmap Phase 14.
 
 ## Relevant Architecture
 
@@ -72,6 +72,7 @@ Repository responsibilities likely involved:
 
 ## Invariants That Must Not Be Violated
 
+- Shared gallery must reuse the proven personal-roll render and gallery pipeline rather than invent a separate rendering architecture.
 - Shared gallery must group by participant, not by global chronology.
 - Gallery display must not block on caching every image before first render.
 - Cloud stores only canonical originals, not rendered derivatives.

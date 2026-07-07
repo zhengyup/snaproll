@@ -2,11 +2,11 @@
 
 ## Roadmap Placement
 
-This document now maps to roadmap Phase 8.
+This document now maps to roadmap Phase 13.
 
 ## Relevant Architecture
 
-When the creator presses `Start Roll`:
+When the creator presses `Start Roll` for a shared roll:
 
 - participant list locks
 - film stock locks
@@ -52,6 +52,13 @@ FILLED exposure → immutable
 - changing roll state to `SHOOTING`
 
 Local data layer must sync exposure slots into SwiftData after start.
+
+This phase comes only after the personal-roll pipeline has already proven:
+
+- ownership scoping
+- cloud-backed roll loading
+- exposure slot usage
+- capture, upload, and reveal
 
 ## Invariants That Must Not Be Violated
 

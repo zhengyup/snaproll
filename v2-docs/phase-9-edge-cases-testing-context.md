@@ -2,7 +2,7 @@
 
 ## Roadmap Placement
 
-This document now primarily maps to roadmap Phase 13.
+This document now primarily maps to roadmap Phase 16.
 
 Notes:
 
@@ -59,6 +59,8 @@ Deletion policy:
 Testing focus from roadmap:
 
 - session/bootstrap and development-auth integration stability
+- personal-roll ownership and identity-scoped loading
+- personal-roll create / shoot / reveal / gallery regression coverage
 - lobby joins/removes
 - start roll transaction
 - upload failure before Storage

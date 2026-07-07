@@ -21,6 +21,25 @@ enum AppConfig {
 
     enum V2 {
         // Keep this disabled until V2 auth/session bootstrap is ready for manual rollout.
-        static let isSessionBootstrapEnabled = false
+        static let isSessionBootstrapEnabled = true
+
+        #if DEBUG
+        // Development-only auth path for building shared-roll features without Apple or Google sign-in.
+        static let isDevelopmentAuthenticationEnabled = true
+        static let developmentIdentity: DevelopmentAuthIdentity = .creator
+        #else
+        static let isDevelopmentAuthenticationEnabled = false
+        static let developmentIdentity: DevelopmentAuthIdentity = .creator
+        #endif
+
+        static var authenticationMode: V2AuthenticationMode {
+            #if DEBUG
+            if isDevelopmentAuthenticationEnabled {
+                return .development(developmentIdentity)
+            }
+            #endif
+
+            return .standard
+        }
     }
 }

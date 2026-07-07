@@ -6,7 +6,11 @@ This document now maps to roadmap Phase 10.
 
 ## Relevant Architecture
 
-Shared reveal lifecycle:
+This phase describes the V2 personal-roll reveal lifecycle first.
+
+Shared reveal must later reuse the same lifecycle principles after participant completion and ownership have been proven separately.
+
+Reveal lifecycle:
 
 ```text
 SHOOTING

@@ -18,6 +18,7 @@ struct JoinRollResult: Sendable {
 protocol AuthRepository: Sendable {
     func currentSession() async throws -> AuthSession?
     func currentUserID() async throws -> UUID?
+    func signOut() async throws
 }
 
 protocol RollRepository: Sendable {

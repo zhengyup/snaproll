@@ -6,6 +6,10 @@ This document now maps to roadmap Phase 9.
 
 ## Relevant Architecture
 
+This phase describes the V2 personal-roll capture, upload, and sync pipeline first.
+
+Shared-roll capture should later reuse the same pipeline with participant-specific ownership layered on top.
+
 Capture is local-first:
 
 ```text

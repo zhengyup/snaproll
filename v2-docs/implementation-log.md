@@ -2,12 +2,12 @@
 
 ## Documentation Update – Roadmap and Authentication Strategy
 
-- Reordered the V2 implementation roadmap to reflect the approved sequence from Phase 0 through Phase 13.
+- Reordered the V2 implementation roadmap to reflect the approved sequence from Phase 0 through Phase 16.
 - Added a Development Authentication strategy to the architecture:
   - authentication remains provider-agnostic
   - `AuthRepository` remains the only auth boundary
   - shared-roll features depend on `AuthRepository`, not directly on Google Sign-In or Apple Sign In
-- Deferred production authentication to Phase 12:
+- Deferred production authentication to the later production-auth phase:
   - Google Sign-In initially
   - Apple Sign In before App Store release
 - Rationale:
@@ -15,6 +15,157 @@
   - easier manual testing
   - avoids blocking development on Apple Developer Program enrollment
   - preserves clean architecture
+
+## Documentation Update – Personal Roll First Strategy
+
+- Recorded Phase 6 as completed Development Authentication.
+- Documented that user-scoped roll ownership is not yet enforced in the visible V2 UI/data flow.
+- Reordered the roadmap so Phase 7 now becomes V2 Cloud Personal Roll Foundation.
+- Documented that V2 must first prove:
+  - current-user ownership
+  - cloud-backed personal roll creation
+  - personal roll shooting, upload, reveal, and gallery
+- Deferred shared-roll implementation until after the V2 personal-roll pipeline is proven.
+- Rationale:
+  - personal rolls are the core Snaproll experience
+  - shared rolls extend the personal-roll pipeline
+  - multi-user complexity should reuse a proven cloud-backed personal flow
+  - this reduces migration risk while preserving V1 behind the feature flag
+
+## Phase 6 Follow-Up – `ensure_profile()` Ambiguity Fix
+
+- Added migration:
+  - `supabase/migrations/20260707114500_phase_6_ensure_profile_ambiguity_fix.sql`
+- Root cause:
+  - `ensure_profile()` uses `RETURNS TABLE (id, display_name)`, which creates PL/pgSQL output variables named `id` and `display_name`
+  - that makes later SQL edits fragile because unqualified references to those names can become ambiguous between output variables and table columns
+- Fix applied:
+  - kept the RPC signature unchanged for the iOS client
+  - rewrote the function to upsert into `public.profiles`, capture the row with `RETURNING ... INTO`, and assign output values explicitly
+  - replaced `on conflict (id)` with `on conflict on constraint profiles_pkey` to avoid relying on a bare `id` identifier inside the conflict target
+- Impact:
+  - Phase 6 bootstrap can continue calling `ensure_profile()` without app-side changes
+  - this closes the same class of ambiguity bug previously seen in Phase 2 RPC work
+
+## Phase 6 – Development Authentication
+
+### Files changed
+
+App / repository code:
+
+- `ios/snaproll/snaproll/App/V2/V2DevelopmentAuth.swift`
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/App/V2/V2SessionBootstrap.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/Utilities/AppConfig.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/DevelopmentAuthTests.swift`
+- `ios/snaproll/snaprollTests/V2SessionBootstrapTests.swift`
+
+Backend support:
+
+- `supabase/migrations/20260707103000_phase_6_development_auth_profile_ensure.sql`
+
+Documentation:
+
+- `v2-docs/phase-6-development-auth-context.md`
+
+### Development identities added
+
+- `Creator`
+- `Participant A`
+- `Participant B`
+
+Each identity includes:
+
+- stable development label
+- fixed display name
+- selected identity routing through `AuthRepository`
+
+Implementation note:
+
+- the current development-auth implementation uses anonymous Supabase sessions persisted per identity slot
+- this provides stable repeatable identities on a given development device/workspace without coupling shared-roll logic to Apple or Google auth providers
+
+### How to enable / disable development auth
+
+In `ios/snaproll/snaproll/Utilities/AppConfig.swift`:
+
+- enable V2 bootstrap with `AppConfig.V2.isSessionBootstrapEnabled = true`
+- enable development auth with `AppConfig.V2.isDevelopmentAuthenticationEnabled = true`
+- disable either flag to return to the existing safe V1 default path
+
+### How to switch identities
+
+In `ios/snaproll/snaproll/Utilities/AppConfig.swift`, change:
+
+- `AppConfig.V2.developmentIdentity`
+
+Supported values:
+
+- `.creator`
+- `.participantA`
+- `.participantB`
+
+### Repository / bootstrap behavior added
+
+- `AuthRepository` now includes `signOut()`
+- `DevelopmentAuthRepository` resolves the selected development identity and remains the only auth boundary seen by the rest of V2
+- `V2DependencyContainer` now selects either:
+  - standard Supabase session auth
+  - or development auth
+- V2 bootstrap now supports sign-out transitions while preserving V1 behavior when the V2 flags stay off
+
+### Profile ensure support
+
+- Added `public.ensure_profile(p_display_name text)` as a minimal security-definer RPC
+- Development auth calls this during bootstrap so the authenticated user satisfies the existing Snaproll RPC invariant that a `profiles` row must exist
+
+### Logging added
+
+- development auth enabled
+- selected development identity
+- session restore / creation
+- profile ensure success
+- profile ensure failure
+- development sign-out
+
+### Build command executed
+
+```text
+xcodebuild -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata CODE_SIGNING_ALLOWED=NO build
+```
+
+### Test command executed
+
+```text
+xcodebuild -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests test
+```
+
+### Results
+
+- build succeeded
+- unit tests succeeded
+
+Covered test cases include:
+
+- development auth resolves `Creator`
+- development auth resolves `Participant A`
+- development auth sign-out transitions to `signedOut`
+- bootstrap starts in `loading`
+- no session transitions to `signedOut`
+- existing session transitions to `signedIn`
+- profile ensure / profile fetch failure transitions to `failed`
+- flags-disabled configuration resolves to standard auth mode
+
+### Assumptions / follow-up work
+
+- This phase intentionally keeps V1 behavior unchanged because `AppConfig.V2.isSessionBootstrapEnabled` remains off by default.
+- Development identity selection is currently config-driven rather than UI-driven to keep the phase non-invasive.
+- Production authentication remains deferred to the later production-auth phase.
 
 ## Phase 1 – Supabase Schema Foundation
 
@@ -302,7 +453,7 @@ Supporting V2 domain types:
 - Reused the existing Swift Package Manager dependency on `supabase-swift` already present in the Xcode project.
 - Added `ios/snaproll/snaproll/App/V2/V2SupabaseConfiguration.swift` to load:
   - `SNAPROLL_SUPABASE_URL`
-  - `SNAPROLL_SUPABASE_ANON_KEY`
+  - `SNAPROLL_SUPABASE_PUBLISHABLE_KEY`
 - The configuration can come from:
   - generated Info.plist keys in the Xcode target build settings
   - or scheme environment variables with the same names

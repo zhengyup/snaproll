@@ -2,12 +2,14 @@
 
 ## Roadmap Placement
 
-This document now maps to roadmap Phase 7.
+This document now maps to roadmap Phase 11.
 
 Development sequencing:
 
 - Phase 5 establishes session bootstrap
 - Phase 6 introduces Development Authentication
+- Phase 7 proves cloud-backed personal roll ownership and creation
+- Phases 8–10 prove personal shooting, upload, reveal, and gallery
 - This shared-roll lobby phase must remain provider-agnostic and depend only on `AuthRepository`
 
 ## Relevant Architecture

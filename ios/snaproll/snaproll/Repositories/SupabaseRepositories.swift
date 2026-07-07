@@ -26,7 +26,7 @@ actor V2SupabaseClientProvider {
         )
         let client = SupabaseClient(
             supabaseURL: configuration.url,
-            supabaseKey: configuration.anonKey,
+            supabaseKey: configuration.publishableKey,
             options: .init(
                 global: .init(
                     logger: OSLogSupabaseLogger(logger)
@@ -292,6 +292,12 @@ final class SupabaseAuthRepository: AuthRepository, @unchecked Sendable, Supabas
     func currentUserID() async throws -> UUID? {
         try await withClient(operation: "auth.currentUserID") { client in
             client.auth.currentSession?.user.id
+        }
+    }
+
+    func signOut() async throws {
+        _ = try await withClient(operation: "auth.signOut") { client in
+            try await client.auth.signOut()
         }
     }
 }

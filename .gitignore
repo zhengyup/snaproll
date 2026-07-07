@@ -14,6 +14,8 @@ xcuserdata/
 
 # SwiftPM
 .build/
+.build-cache
+.build-home
 .swiftpm/
 
 # Local app data / generated photos
