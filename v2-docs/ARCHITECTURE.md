@@ -934,7 +934,46 @@ Views never talk directly to Supabase.
 
 ---
 
-# 15. Gallery Behaviour
+# 15. Development Authentication Strategy
+
+Authentication in Snaproll V2 is provider-agnostic.
+
+`AuthRepository` remains the only authentication boundary consumed by the rest of the app.
+
+During development, Snaproll supports a Development Authentication mode.
+
+Development Authentication may provide either:
+
+```text
+- a fixed development identity
+- or a selectable development identity
+```
+
+Shared roll features must depend only on `AuthRepository`.
+
+Shared roll features must never depend directly on:
+
+```text
+Google Sign-In
+Apple Sign In
+```
+
+Production authentication will later replace the development implementation without requiring changes to shared roll logic.
+
+Motivation:
+
+```text
+- faster product iteration
+- easier manual testing
+- avoids blocking development on Apple Developer Program enrollment
+- preserves clean architecture
+```
+
+This keeps authentication concerns isolated while allowing the shared-roll product to move forward before production sign-in is finalized.
+
+---
+
+# 16. Gallery Behaviour
 
 Shared gallery is grouped by participant.
 
@@ -977,7 +1016,7 @@ Do not block gallery until every image is cached.
 
 ---
 
-# 16. Deletion Policy
+# 17. Deletion Policy
 
 V2 uses hard deletes.
 
@@ -1005,9 +1044,24 @@ This supports permanence.
 
 ---
 
-# 17. Implementation Roadmap for Codex
+# 18. Implementation Roadmap for Codex
 
-## Phase 1 — Supabase Foundation
+## Phase 0 — Project Audit
+
+Implement:
+
+* Audit the V1 codebase
+* Identify preserved foundations
+* Identify V2 conflicts and migration gaps
+* Prepare a safe migration checklist
+
+Deliverable:
+
+```text
+Audit report and migration plan
+```
+
+## Phase 1 — Supabase Schema
 
 Implement:
 
@@ -1016,7 +1070,6 @@ Implement:
 * Indexes
 * Foreign keys
 * Basic RLS skeleton
-* Storage bucket
 
 Deliverable:
 
@@ -1024,7 +1077,7 @@ Deliverable:
 Supabase schema migration
 ```
 
-## Phase 2 — RPC Functions
+## Phase 2 — RPC Foundation
 
 Implement:
 
@@ -1047,23 +1100,67 @@ Deliverable:
 RPC SQL migration + tests
 ```
 
-## Phase 3 — iOS Data Layer
+## Phase 3 — Local Data Layer
 
 Implement:
 
 * SwiftData local models
 * Repository interfaces
-* Supabase client wrapper
-* AuthRepository
-* RollRepository basics
 
 Deliverable:
 
 ```text
-App can create/fetch rolls through repositories.
+Local V2 model and repository boundaries are in place.
 ```
 
-## Phase 4 — Shared Roll Lobby
+## Phase 4 — Supabase Networking Foundation
+
+Implement:
+
+* Supabase Swift client setup
+* Repository implementations
+* RPC integration from repositories
+* Error mapping
+* Dependency injection
+* Minimal read-side access needed for networking
+
+Deliverable:
+
+```text
+V2 networking layer is buildable and injectable.
+```
+
+## Phase 5 — Session Bootstrap
+
+Implement:
+
+* Session bootstrap orchestration
+* Loading / signed-out / signed-in / failed state
+* Profile ensure/load at startup
+* V2 entry-point feature flag
+
+Deliverable:
+
+```text
+App can safely bootstrap into V2 session state without changing V1 behavior.
+```
+
+## Phase 6 — Development Authentication
+
+Implement:
+
+* Development auth mode behind `AuthRepository`
+* Fixed or selectable development identity
+* Session creation suitable for manual testing
+* No shared-roll logic dependency on production auth providers
+
+Deliverable:
+
+```text
+Shared-roll development can proceed without Apple or Google production auth flows.
+```
+
+## Phase 7 — Shared Roll Lobby
 
 Implement:
 
@@ -1080,7 +1177,7 @@ Deliverable:
 Shared lobby works end-to-end.
 ```
 
-## Phase 5 — Start Roll + Exposure Creation
+## Phase 8 — Start Roll & Exposure Generation
 
 Implement:
 
@@ -1095,7 +1192,7 @@ Deliverable:
 Shared roll enters SHOOTING with exposure slots.
 ```
 
-## Phase 6 — Capture + Sync Engine
+## Phase 9 — Capture → Upload → Sync
 
 Implement:
 
@@ -1114,7 +1211,7 @@ Deliverable:
 Photos upload reliably without blocking capture.
 ```
 
-## Phase 7 — Ready to Reveal + Reveal
+## Phase 10 — Reveal Flow
 
 Implement:
 
@@ -1130,7 +1227,7 @@ Deliverable:
 Shared roll can be revealed.
 ```
 
-## Phase 8 — Shared Gallery
+## Phase 11 — Shared Gallery
 
 Implement:
 
@@ -1146,34 +1243,31 @@ Deliverable:
 Revealed shared gallery works.
 ```
 
-## Phase 9 — Force Reveal + Edge Cases
+## Phase 12 — Production Authentication
 
 Implement:
 
-* Hidden force reveal action
-* Partial gallery support
-* Failed upload UI
-* Retry controls
-* Offline messaging
+* Replace development auth with production auth providers
+* Google Sign-In initially
+* Apple Sign In before App Store release
+* Preserve `AuthRepository` boundary
 
 Deliverable:
 
 ```text
-Exceptional flows are handled safely.
+Production authentication is integrated without changing shared-roll logic.
 ```
 
-## Phase 10 — Polish and Testing
+## Phase 13 — Polling, Offline Refinement, Production Hardening
 
-Test:
+Implement:
 
-* Lobby joins/removes
-* Start roll transaction
-* Upload failure before Storage
-* Upload failure after Storage before RPC
-* App killed during upload
-* Reveal readiness
-* Force reveal
-* Reinstall recovery for uploaded photos
+* Polling refinements
+* Offline recovery polish
+* Failed upload UI
+* Retry controls
+* Force reveal and exceptional-flow hardening
+* End-to-end testing and beta stabilization
 
 Deliverable:
 

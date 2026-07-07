@@ -1,5 +1,9 @@
 # Phase 3 – iOS Data Layer Context
 
+## Roadmap Placement
+
+This document still maps directly to roadmap Phase 3.
+
 ## Relevant Architecture
 
 The iOS V2 data layer is:
@@ -85,6 +89,12 @@ InviteRepository
 SyncRepository
 RenderCacheRepository
 ```
+
+Session and identity note:
+
+- Session bootstrap is handled in roadmap Phase 5
+- Development Authentication is introduced in roadmap Phase 6
+- Shared-roll features must still depend only on `AuthRepository`
 
 Principle:
 

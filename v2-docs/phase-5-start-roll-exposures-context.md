@@ -1,4 +1,8 @@
-# Phase 5 – Start Roll + Exposure Creation Context
+# Start Roll + Exposure Creation Context
+
+## Roadmap Placement
+
+This document now maps to roadmap Phase 8.
 
 ## Relevant Architecture
 

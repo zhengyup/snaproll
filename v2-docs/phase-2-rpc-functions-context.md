@@ -1,5 +1,9 @@
 # Phase 2 – RPC Functions Context
 
+## Roadmap Placement
+
+This document still maps directly to roadmap Phase 2.
+
 ## Relevant Architecture
 
 Business transitions must go through RPC functions.

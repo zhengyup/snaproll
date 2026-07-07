@@ -1,4 +1,8 @@
-# Phase 7 – Reveal Flow Context
+# Reveal Flow Context
+
+## Roadmap Placement
+
+This document now maps to roadmap Phase 10.
 
 ## Relevant Architecture
 

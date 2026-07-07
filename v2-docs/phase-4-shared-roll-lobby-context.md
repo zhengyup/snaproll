@@ -1,4 +1,14 @@
-# Phase 4 – Shared Roll Lobby Context
+# Shared Roll Lobby Context
+
+## Roadmap Placement
+
+This document now maps to roadmap Phase 7.
+
+Development sequencing:
+
+- Phase 5 establishes session bootstrap
+- Phase 6 introduces Development Authentication
+- This shared-roll lobby phase must remain provider-agnostic and depend only on `AuthRepository`
 
 ## Relevant Architecture
 

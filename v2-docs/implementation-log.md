@@ -1,5 +1,21 @@
 # V2 Implementation Log
 
+## Documentation Update – Roadmap and Authentication Strategy
+
+- Reordered the V2 implementation roadmap to reflect the approved sequence from Phase 0 through Phase 13.
+- Added a Development Authentication strategy to the architecture:
+  - authentication remains provider-agnostic
+  - `AuthRepository` remains the only auth boundary
+  - shared-roll features depend on `AuthRepository`, not directly on Google Sign-In or Apple Sign In
+- Deferred production authentication to Phase 12:
+  - Google Sign-In initially
+  - Apple Sign In before App Store release
+- Rationale:
+  - faster product iteration
+  - easier manual testing
+  - avoids blocking development on Apple Developer Program enrollment
+  - preserves clean architecture
+
 ## Phase 1 – Supabase Schema Foundation
 
 ### Migration filename

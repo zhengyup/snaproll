@@ -1,4 +1,13 @@
-# Phase 9 – Edge Cases + Testing Context
+# Edge Cases + Testing Context
+
+## Roadmap Placement
+
+This document now primarily maps to roadmap Phase 13.
+
+Notes:
+
+- Force Reveal behavior is introduced earlier as part of the reveal and exceptional-flow design
+- This document focuses on later hardening, offline refinement, and regression coverage
 
 ## Relevant Architecture
 
@@ -49,6 +58,7 @@ Deletion policy:
 
 Testing focus from roadmap:
 
+- session/bootstrap and development-auth integration stability
 - lobby joins/removes
 - start roll transaction
 - upload failure before Storage

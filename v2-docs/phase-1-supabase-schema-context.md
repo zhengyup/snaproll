@@ -1,5 +1,9 @@
 # Phase 1 – Supabase Schema Context
 
+## Roadmap Placement
+
+This document still maps directly to roadmap Phase 1.
+
 ## Relevant Architecture
 
 Supabase is the backend for V2. No custom backend server is required.

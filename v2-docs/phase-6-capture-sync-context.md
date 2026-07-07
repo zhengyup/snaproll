@@ -1,4 +1,8 @@
-# Phase 6 – Capture + Sync Context
+# Capture + Sync Context
+
+## Roadmap Placement
+
+This document now maps to roadmap Phase 9.
 
 ## Relevant Architecture
 

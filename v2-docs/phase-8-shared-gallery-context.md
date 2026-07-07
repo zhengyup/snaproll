@@ -1,4 +1,8 @@
-# Phase 8 – Shared Gallery Context
+# Shared Gallery Context
+
+## Roadmap Placement
+
+This document now maps to roadmap Phase 11.
 
 ## Relevant Architecture
 

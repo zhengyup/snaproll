@@ -1,5 +1,9 @@
 # Phase 0 – Project Audit Context
 
+## Roadmap Placement
+
+This document still maps directly to roadmap Phase 0.
+
 ## Relevant Architecture
 
 Snaproll V2 keeps the disposable-camera metaphor while adding shared rolls.
@@ -62,6 +66,7 @@ Repository boundary:
 
 - Views and ViewModels do not talk directly to Supabase
 - Repositories mediate SwiftData, Supabase, Storage, RPCs, and sync
+- Authentication must remain provider-agnostic behind `AuthRepository`
 
 ## Audit Focus
 
