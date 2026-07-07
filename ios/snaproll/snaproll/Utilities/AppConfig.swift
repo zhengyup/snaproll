@@ -18,4 +18,9 @@ enum AppConfig {
         static let captureFeedbackDurationNanoseconds: UInt64 = 1_100_000_000
         static let completionDismissDelayNanoseconds: UInt64 = 900_000_000
     }
+
+    enum V2 {
+        // Keep this disabled until V2 auth/session bootstrap is ready for manual rollout.
+        static let isSessionBootstrapEnabled = false
+    }
 }

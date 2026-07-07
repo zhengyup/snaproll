@@ -226,3 +226,172 @@ One implementation detail was added to preserve an architectural invariant:
   - the `join_roll()` PL/pgSQL ambiguity caused by `RETURNS TABLE` output names colliding with unqualified `roll_id` references
   - the canonical padded storage path contract in `complete_exposure()` so exposure paths use `001.jpg` style numbering
 - The original Phase 2 migration file was restored to its previously applied form so local migration history matches what was actually deployed.
+
+## Phase 3 – iOS Data Layer Foundation
+
+### Files added
+
+- `ios/snaproll/snaproll/Models/V2/V2DomainTypes.swift`
+- `ios/snaproll/snaproll/Models/V2/LocalRoll.swift`
+- `ios/snaproll/snaproll/Models/V2/LocalParticipant.swift`
+- `ios/snaproll/snaproll/Models/V2/LocalExposure.swift`
+- `ios/snaproll/snaproll/Models/V2/LocalInvite.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+- `ios/snaproll/snaproll/App/V2/V2DataLayer.swift`
+
+### Models added
+
+SwiftData models:
+
+- `LocalRoll`
+- `LocalParticipant`
+- `LocalExposure`
+- `LocalInvite`
+
+Supporting V2 domain types:
+
+- `V2Domain.RollType`
+- `V2Domain.RollStatus`
+- `V2Domain.ParticipantStatus`
+- `V2Domain.ExposureSyncState`
+
+### Repository protocols added
+
+- `AuthRepository`
+- `RollRepository`
+- `ParticipantRepository`
+- `ExposureRepository`
+- `InviteRepository`
+- `SyncRepository`
+- `RenderCacheRepository`
+
+### Assumptions made
+
+- The V2 enums were namespaced under `V2Domain` to avoid colliding with the existing V1 `RollStatus` type and to keep V1 behavior unchanged.
+- The SwiftData models currently store cloud identifiers and local workflow state as scalar fields rather than introducing relationships, keeping the foundation simple and non-invasive for this phase.
+- `LocalExposure` includes a canonical padded storage-path helper using the agreed convention:
+  `rolls/{roll_id}/participants/{participant_id}/001.jpg`
+- No SwiftData `ModelContainer` was attached to the app yet, because this phase introduces the local model layer only and must not alter current V1 runtime behavior.
+- The build environment used for this phase cannot successfully expand SwiftData macros, so the SwiftData-backed `@Model` definitions are present behind a compile-time gate and a shape-compatible fallback path keeps the V1 app buildable today.
+
+### Deviations
+
+- The architecture names the enums generically (`RollType`, `RollStatus`, etc.), but the implementation wraps them in a `V2Domain` namespace for coexistence with the V1 app model layer.
+- The SwiftData model definitions are gated behind `V2_SWIFTDATA_MODELS` so the project can compile reliably in the current toolchain environment without changing V1 behavior. The active compiled path preserves the same local model shapes and repository boundaries for this foundation phase.
+
+## Phase 4 – iOS Supabase Networking Foundation
+
+### Supabase client setup
+
+- Reused the existing Swift Package Manager dependency on `supabase-swift` already present in the Xcode project.
+- Added `ios/snaproll/snaproll/App/V2/V2SupabaseConfiguration.swift` to load:
+  - `SNAPROLL_SUPABASE_URL`
+  - `SNAPROLL_SUPABASE_ANON_KEY`
+- The configuration can come from:
+  - generated Info.plist keys in the Xcode target build settings
+  - or scheme environment variables with the same names
+- Added `V2SupabaseClientProvider` as a lazy actor-backed provider so the app creates at most one `SupabaseClient` instance and only when a V2 repository is first used.
+
+### Dependency injection changes
+
+- Added `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- Added a non-invasive `v2Dependencies` app-level container in `SnaprollApp`
+- The current V1 UI does not consume these dependencies yet, but the repository graph now exists at the app layer for later feature integration.
+
+### Repositories implemented
+
+- `SupabaseAuthRepository`
+- `SupabaseRollRepository`
+- `SupabaseParticipantRepository`
+- `SupabaseExposureRepository`
+- `SupabaseInviteRepository`
+
+### Repository operations implemented
+
+- Auth:
+  - `currentSession()`
+  - `currentUserID()`
+- Rolls:
+  - `fetchRoll(id:)`
+  - `fetchRolls()`
+  - `createRoll(...)`
+- Participants:
+  - `fetchParticipants(forRollID:)`
+  - `fetchParticipant(id:)`
+  - `joinRoll(inviteToken:)`
+  - `leaveRoll(rollID:)`
+- Exposures:
+  - `fetchExposures(forRollID:)`
+  - `fetchExposures(forParticipantID:)`
+  - `fetchExposure(id:)`
+- Invites:
+  - `fetchInvite(forRollID:)`
+  - `fetchInvite(token:)`
+  - `regenerateInvite(forRollID:)`
+
+### Error mapping
+
+- Added `ios/snaproll/snaproll/Repositories/V2RepositoryError.swift`
+- Repository calls now map Supabase/PostgREST/network/decoding failures into domain-facing repository errors instead of exposing raw database errors directly to callers.
+
+### Read-access support added
+
+- Added `supabase/migrations/20260707021000_phase_4_read_rls_for_ios.sql`
+- This migration introduces the minimal read-side RLS policies required for the iOS networking layer to function with the anon/authenticated client:
+  - authenticated profile reads
+  - roll reads for creators/participants
+  - participant-list reads for accessible rolls
+  - exposure reads for accessible rolls
+  - invite reads for creators
+- Business-state mutations remain RPC-owned; no direct write policies were added.
+
+### Assumptions made
+
+- Because Phase 1 intentionally enabled RLS with deny-by-default and Phase 2 lifecycle RPCs are security-definer only for writes, the iOS read path required the smallest possible read-side RLS layer in order to make repository fetches functional.
+- V2 write methods that depend on future local SwiftData syncing or later feature phases remain intentionally unsupported in the concrete repositories for now rather than silently performing partial behavior.
+- V1 screens and flows remain unchanged; the new networking layer is app-scoped infrastructure for later V2 feature integration.
+
+## Phase 5 – V2 Auth / Session Bootstrap Integration
+
+### Files added
+
+- `ios/snaproll/snaproll/App/V2/V2SessionBootstrap.swift`
+
+### Files updated
+
+- `ios/snaproll/snaproll/App/SnaprollApp.swift`
+- `ios/snaproll/snaproll/Utilities/AppConfig.swift`
+
+### Bootstrap layer added
+
+- Added `V2SessionState` with:
+  - `loading`
+  - `signedOut`
+  - `signedIn(AuthSession)`
+  - `failed(String)`
+- Added `V2SessionBootstrapper` to orchestrate the initial auth/session check through `AuthRepository`
+- Added `V2SessionStore` as the app-owned observable bootstrap/session state holder
+- Added lightweight OSLog-backed state transition logging for:
+  - bootstrap start
+  - signed out resolution
+  - signed in resolution
+  - bootstrap failure
+
+### App integration
+
+- `SnaprollApp` now owns:
+  - the V2 dependency container
+  - a V2 session store created from that container
+- Added `AppConfig.V2.isSessionBootstrapEnabled` feature flag
+- Default remains `false` so the live app still enters through the V1 `HomeView`
+- When enabled later, the app enters through `V2BootstrapEntryView`, which:
+  - starts in loading state
+  - bootstraps once
+  - shows signed-out / failed placeholder states
+  - routes signed-in users to the existing `HomeView`
+
+### Assumptions made
+
+- For this phase, `AuthRepository.currentSession()` is the bootstrap boundary that both detects an auth session and fetches the current profile-backed session information.
+- A dedicated V2 sign-in UI and explicit profile-creation/repair flow are deferred to later auth phases.
+- Because the feature flag remains off by default, no V1 user-visible behavior changes in normal app usage.

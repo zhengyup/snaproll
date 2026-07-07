@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3A5BE3522FFC1C6500AE37A6 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 3A5BE3512FFC1C6500AE37A6 /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3A56D7602FEBFC5100C21B6C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3A5BE3522FFC1C6500AE37A6 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = snaproll;
 			packageProductDependencies = (
+				3A5BE3512FFC1C6500AE37A6 /* Supabase */,
 			);
 			productName = snaproll;
 			productReference = 3A56D7522FEBFC5000C21B6C /* snaproll.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 3A56D7492FEBFC5000C21B6C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3A5BE3502FFC1C6500AE37A6 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3A56D7532FEBFC5000C21B6C /* Products */;
 			projectDirPath = "";
@@ -409,6 +418,8 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Snaproll needs camera access so you can capture memories directly into your roll.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
+				INFOPLIST_KEY_SNAPROLL_SUPABASE_ANON_KEY = "";
+				INFOPLIST_KEY_SNAPROLL_SUPABASE_URL = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -466,6 +477,8 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Snaproll needs camera access so you can capture memories directly into your roll.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
+				INFOPLIST_KEY_SNAPROLL_SUPABASE_ANON_KEY = "";
+				INFOPLIST_KEY_SNAPROLL_SUPABASE_URL = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -635,6 +648,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3A5BE3502FFC1C6500AE37A6 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3A5BE3512FFC1C6500AE37A6 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3A5BE3502FFC1C6500AE37A6 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3A56D74A2FEBFC5000C21B6C /* Project object */;
 }
