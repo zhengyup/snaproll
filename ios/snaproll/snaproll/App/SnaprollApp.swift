@@ -5,7 +5,7 @@ struct SnaprollApp: App {
     #if os(iOS)
     @UIApplicationDelegateAdaptor(SnaprollAppDelegate.self) private var appDelegate
     #endif
-    private let v2Dependencies = V2DependencyContainer.live()
+    private let v2Dependencies: V2DependencyContainer
     private let v2SessionStore: V2SessionStore
 
     init() {
