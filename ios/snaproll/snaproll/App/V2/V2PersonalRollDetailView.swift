@@ -7,7 +7,8 @@ struct V2PersonalRollDetailView: View {
 
     init(
         rollID: UUID,
-        dependencies: V2DependencyContainer
+        dependencies: V2DependencyContainer,
+        developmentIdentity: DevelopmentAuthIdentity? = nil
     ) {
         self.dependencies = dependencies
         _viewModel = StateObject(
@@ -16,7 +17,8 @@ struct V2PersonalRollDetailView: View {
                 rollRepository: dependencies.rollRepository,
                 exposureRepository: dependencies.exposureRepository,
                 exposureMirrorStore: dependencies.exposureMirrorStore,
-                photoStorageService: dependencies.photoStorageService
+                photoStorageService: dependencies.photoStorageService,
+                activeDevelopmentIdentityLabel: developmentIdentity?.displayName
             )
         )
     }
@@ -158,6 +160,28 @@ struct V2PersonalRollDetailView: View {
                 .font(.headline)
                 .foregroundStyle(.white.opacity(0.95))
 
+            if let summary = viewModel.diagnosticsSummary {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let activeIdentityLabel = summary.activeIdentityLabel {
+                        diagnosticsSummaryLine(title: "Identity", value: activeIdentityLabel)
+                    }
+
+                    diagnosticsSummaryLine(title: "Roll ID", value: summary.rollID.uuidString)
+                    diagnosticsSummaryLine(
+                        title: "Status",
+                        value: summary.rollStatus.rawValue.replacingOccurrences(of: "_", with: " ")
+                    )
+                    diagnosticsSummaryLine(title: "Captured", value: "\(summary.capturedCount)")
+                    diagnosticsSummaryLine(title: "Remaining", value: "\(summary.remainingCount)")
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.black.opacity(0.18))
+                )
+            }
+
             if viewModel.diagnosticsRows.isEmpty {
                 Text("No mirrored exposures yet.")
                     .font(.footnote)
@@ -221,6 +245,19 @@ struct V2PersonalRollDetailView: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
+    }
+
+    private func diagnosticsSummaryLine(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.62))
+
+            Text(value)
+                .font(.caption.monospaced())
+                .foregroundStyle(.white.opacity(0.88))
+                .textSelection(.enabled)
+        }
     }
 
     private func progressMetric(title: String, value: String) -> some View {

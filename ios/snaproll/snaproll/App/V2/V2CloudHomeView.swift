@@ -47,6 +47,7 @@ struct V2CloudHomeView: View {
                     V2CloudRollListSection(
                         state: viewModel.state,
                         rolls: viewModel.rolls,
+                        selectedIdentity: developmentAuthSettings.selectedIdentity,
                         dependencies: dependencies,
                         onRetry: {
                             Task {
@@ -236,6 +237,7 @@ private struct V2CloudCreateRollPanel: View {
 private struct V2CloudRollListSection: View {
     let state: V2CloudHomeState
     let rolls: [LocalRoll]
+    let selectedIdentity: DevelopmentAuthIdentity
     let dependencies: V2DependencyContainer
     let onRetry: () -> Void
 
@@ -278,7 +280,8 @@ private struct V2CloudRollListSection: View {
                         NavigationLink {
                             V2PersonalRollDetailView(
                                 rollID: roll.id,
-                                dependencies: dependencies
+                                dependencies: dependencies,
+                                developmentIdentity: selectedIdentity
                             )
                         } label: {
                             V2CloudRollCard(roll: roll)

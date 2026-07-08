@@ -10,6 +10,14 @@ enum V2PersonalRollDetailState: Equatable {
 
 @MainActor
 final class V2PersonalRollDetailViewModel: ObservableObject {
+    struct DiagnosticsSummary: Equatable {
+        let activeIdentityLabel: String?
+        let rollID: UUID
+        let rollStatus: V2Domain.RollStatus
+        let capturedCount: Int
+        let remainingCount: Int
+    }
+
     struct DiagnosticsRow: Identifiable, Equatable {
         let id: UUID
         let exposureNumber: Int
@@ -32,6 +40,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     private let exposureMirrorStore: any ExposureMirrorStore
     private let photoStorageService: PhotoStorageService
     private let diagnosticsEnabled: Bool
+    private let activeDevelopmentIdentityLabel: String?
 
     init(
         rollID: UUID,
@@ -39,7 +48,8 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         exposureRepository: any ExposureRepository,
         exposureMirrorStore: any ExposureMirrorStore,
         photoStorageService: PhotoStorageService? = nil,
-        diagnosticsEnabled: Bool? = nil
+        diagnosticsEnabled: Bool? = nil,
+        activeDevelopmentIdentityLabel: String? = nil
     ) {
         self.rollID = rollID
         self.rollRepository = rollRepository
@@ -47,6 +57,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         self.exposureMirrorStore = exposureMirrorStore
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
         self.diagnosticsEnabled = diagnosticsEnabled ?? AppConfig.V2.isExposureDiagnosticsEnabled
+        self.activeDevelopmentIdentityLabel = activeDevelopmentIdentityLabel
     }
 
     var filmLabel: String {
@@ -110,6 +121,20 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
 
     var shouldShowDiagnostics: Bool {
         diagnosticsEnabled
+    }
+
+    var diagnosticsSummary: DiagnosticsSummary? {
+        guard diagnosticsEnabled, let roll else {
+            return nil
+        }
+
+        return DiagnosticsSummary(
+            activeIdentityLabel: activeDevelopmentIdentityLabel,
+            rollID: roll.id,
+            rollStatus: roll.status,
+            capturedCount: capturedExposures,
+            remainingCount: remainingExposures
+        )
     }
 
     func load() async {

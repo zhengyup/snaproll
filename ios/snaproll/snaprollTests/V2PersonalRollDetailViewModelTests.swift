@@ -132,12 +132,18 @@ struct V2PersonalRollDetailViewModelTests {
             rollRepository: FakeDetailRollRepository(fetchRollResults: [.success(makeRoll(id: rollID, status: .shooting, exposures: 1))]),
             exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [.success(cloudExposures)]),
             exposureMirrorStore: InMemoryExposureMirrorStore(),
-            diagnosticsEnabled: true
+            diagnosticsEnabled: true,
+            activeDevelopmentIdentityLabel: "Creator"
         )
 
         await viewModel.load()
 
         #expect(viewModel.shouldShowDiagnostics)
+        #expect(viewModel.diagnosticsSummary?.activeIdentityLabel == "Creator")
+        #expect(viewModel.diagnosticsSummary?.rollID == rollID)
+        #expect(viewModel.diagnosticsSummary?.rollStatus == .shooting)
+        #expect(viewModel.diagnosticsSummary?.capturedCount == 0)
+        #expect(viewModel.diagnosticsSummary?.remainingCount == 1)
         #expect(viewModel.diagnosticsRows.count == 1)
         #expect(viewModel.diagnosticsRows.first?.exposureNumber == 1)
         #expect(viewModel.diagnosticsRows.first?.syncState == .empty)
@@ -160,6 +166,7 @@ struct V2PersonalRollDetailViewModelTests {
         await viewModel.load()
 
         #expect(viewModel.shouldShowDiagnostics == false)
+        #expect(viewModel.diagnosticsSummary == nil)
         #expect(viewModel.diagnosticsRows.isEmpty)
     }
 }

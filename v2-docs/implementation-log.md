@@ -1,5 +1,93 @@
 # V2 Implementation Log
 
+## Phase 8C – V2 Development Visibility & Simulator Capture Hardening
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2CloudHomeView.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+
+View models:
+
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2ImageSourceProviderTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRollDetailViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### Debug visibility behavior
+
+- Completed the remaining Phase 8C diagnostics on the V2 personal roll detail surface instead of creating a separate debug screen.
+- When `AppConfig.V2.isExposureDiagnosticsEnabled` is enabled, the V2 roll detail now shows:
+  - active development identity
+  - roll id
+  - roll status
+  - captured count
+  - remaining count
+  - per-exposure local diagnostics already added in Phase 8B
+- When diagnostics are disabled, those details remain fully hidden and the roll detail falls back to film-style progress only.
+
+### Simulator / dev capture support
+
+- The existing `DevelopmentSampleImageSourceProvider` remains the simulator-safe image source for V2 capture testing.
+- Added explicit test coverage proving it returns non-empty, decodable image data.
+- The capture pipeline itself remains unchanged:
+  - image source provider
+  - next empty mirrored exposure
+  - local original persistence
+  - `LOCAL_ONLY`
+
+### How to manually validate Phase 8C
+
+With V2 bootstrap and development auth enabled:
+
+1. Launch the app in a debug build.
+2. Select a development identity from the V2 cloud home screen.
+3. Create and start a V2 personal roll.
+4. Open the roll detail.
+5. Confirm the development diagnostics panel now clearly shows:
+   - active identity
+   - roll id
+   - roll status
+   - captured / remaining counts
+6. Capture on simulator using the development sample provider.
+7. Confirm captured exposures continue to show:
+   - `LOCAL_ONLY`
+   - local file exists
+   - local file path
+   - capture timestamp
+   - thumbnail preview in development mode only
+8. Disable exposure diagnostics and confirm the same roll detail hides the diagnostic metadata and thumbnails.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata CODE_SIGNING_ALLOWED=NO build
+```
+
+### Test command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests -only-testing:snaprollTests/V2LocalCapturePipelineTests -only-testing:snaprollTests/V2ImageSourceProviderTests -only-testing:snaprollTests/V2CloudHomeViewModelTests test
+```
+
+### Results
+
+- full iOS build succeeded
+- targeted Phase 8A/8B/8C V2 tests passed on simulator
+
+### Assumptions / follow-up work
+
+- The V2 roll detail diagnostics remain intentionally developer-facing and are not final product UI.
+- Phase 9 should continue from the current local-first behavior by introducing upload state transitions without weakening the hidden-film behavior in normal mode.
+
 ## Phase 8B – V2 Local Capture Pipeline
 
 ### Files changed
