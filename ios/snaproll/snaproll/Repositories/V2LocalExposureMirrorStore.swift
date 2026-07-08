@@ -147,6 +147,12 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
             .map { $0.toLocalExposure() }
     }
 
+    func saveExposure(_ exposure: LocalExposure) async throws {
+        try loadIfNeeded()
+        snapshotsByID[exposure.id] = LocalExposureSnapshot(exposure: exposure)
+        try persist()
+    }
+
     private func merge(
         cloud exposure: LocalExposure,
         existing: LocalExposureSnapshot?

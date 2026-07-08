@@ -58,6 +58,7 @@ protocol ExposureRepository: Sendable {
 protocol ExposureMirrorStore: AnyObject {
     func fetchExposures(forRollID rollID: UUID) async throws -> [LocalExposure]
     func mirrorCloudExposures(_ exposures: [LocalExposure], forRollID rollID: UUID) async throws -> [LocalExposure]
+    func saveExposure(_ exposure: LocalExposure) async throws
 }
 
 protocol InviteRepository: Sendable {

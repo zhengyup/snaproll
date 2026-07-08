@@ -15,6 +15,9 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let exposureNumber: Int
         let syncState: V2Domain.ExposureSyncState
         let renderSeed: String
+        let localFileExists: Bool
+        let localOriginalPath: String?
+        let captureTimestamp: Date?
     }
 
     @Published private(set) var state: V2PersonalRollDetailState = .idle
@@ -27,6 +30,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     private let rollRepository: any RollRepository
     private let exposureRepository: any ExposureRepository
     private let exposureMirrorStore: any ExposureMirrorStore
+    private let photoStorageService: PhotoStorageService
     private let diagnosticsEnabled: Bool
 
     init(
@@ -34,12 +38,14 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         rollRepository: any RollRepository,
         exposureRepository: any ExposureRepository,
         exposureMirrorStore: any ExposureMirrorStore,
+        photoStorageService: PhotoStorageService? = nil,
         diagnosticsEnabled: Bool? = nil
     ) {
         self.rollID = rollID
         self.rollRepository = rollRepository
         self.exposureRepository = exposureRepository
         self.exposureMirrorStore = exposureMirrorStore
+        self.photoStorageService = photoStorageService ?? PhotoStorageService()
         self.diagnosticsEnabled = diagnosticsEnabled ?? AppConfig.V2.isExposureDiagnosticsEnabled
     }
 
@@ -80,6 +86,10 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         roll?.status == .draft
     }
 
+    var shouldShowCaptureAction: Bool {
+        roll?.status == .shooting && remainingExposures > 0
+    }
+
     var diagnosticsRows: [DiagnosticsRow] {
         guard diagnosticsEnabled else {
             return []
@@ -90,7 +100,10 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
                 id: exposure.id,
                 exposureNumber: exposure.exposure_number,
                 syncState: exposure.sync_state,
-                renderSeed: exposure.render_seed
+                renderSeed: exposure.render_seed,
+                localFileExists: exposure.local_original_path.map { photoStorageService.fileExists(at: $0) } ?? false,
+                localOriginalPath: exposure.local_original_path,
+                captureTimestamp: exposure.captured_at
             )
         }
     }

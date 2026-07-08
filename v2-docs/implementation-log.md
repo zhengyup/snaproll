@@ -1,5 +1,171 @@
 # V2 Implementation Log
 
+## Phase 8B – V2 Local Capture Pipeline
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2CaptureView.swift`
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+
+View models:
+
+- `ios/snaproll/snaproll/ViewModels/V2CaptureViewModel.swift`
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+
+Services / capture pipeline:
+
+- `ios/snaproll/snaproll/Services/PhotoStorageService.swift`
+- `ios/snaproll/snaproll/Services/V2ImageSourceProviders.swift`
+- `ios/snaproll/snaproll/Services/V2LocalCapturePipeline.swift`
+
+Repositories / local mirror:
+
+- `ios/snaproll/snaproll/Repositories/V2LocalExposureMirrorStore.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2CloudHomeViewModelTests.swift`
+- `ios/snaproll/snaprollTests/V2LocalCapturePipelineTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRollDetailViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### What changed
+
+- Added an `ImageSourceProvider` abstraction so V2 local capture does not depend directly on one concrete input mechanism.
+- Added two provider implementations:
+  - `DeviceCameraImageSourceProvider`
+  - `DevelopmentSampleImageSourceProvider`
+- Added a V2-only local capture pipeline that:
+  - fetches the next empty mirrored exposure
+  - captures image data from the selected provider
+  - saves the original image locally without upload
+  - marks the exposure `LOCAL_ONLY`
+  - persists the updated mirrored exposure
+- Added a minimal V2 capture screen reachable from the V2 personal roll detail screen.
+
+### ImageSourceProvider
+
+- `ImageSourceProvider` is now the boundary between the V2 capture flow and the actual image source.
+- The V2 pipeline only asks the provider for a captured image payload:
+  - raw image data
+  - file extension
+- Provider implementations:
+  - `DeviceCameraImageSourceProvider`
+    - wraps the existing `CameraService`
+    - prepares camera authorization and preview
+    - returns captured device-camera data as the local original
+  - `DevelopmentSampleImageSourceProvider`
+    - generates a deterministic development sample image
+    - allows simulator/manual testing without camera hardware
+
+### Local capture pipeline
+
+- `V2LocalCapturePipeline.captureNextExposure(...)` is now the core Phase 8B workflow.
+- Capture flow:
+  1. ask the selected `ImageSourceProvider` for image data
+  2. load local mirrored exposures for the roll
+  3. select the next empty exposure only
+  4. save the original image locally
+  5. set:
+     - `local_original_path`
+     - `captured_at`
+     - `sync_state = LOCAL_ONLY`
+     - `updated_at`
+  6. persist the updated mirrored exposure
+- This phase still does not:
+  - upload
+  - create JPEG upload copies
+  - call `complete_exposure()`
+  - touch Supabase Storage
+
+### Local persistence
+
+- Added `PhotoStorageService.saveOriginalImageData(...)` for V2 local-original persistence.
+- Unlike the older V1 helper, this path stores the captured original bytes directly and does not generate a JPEG upload artifact.
+- The local exposure mirror store now supports `saveExposure(_:)` so captured local state survives leaving and reopening the roll.
+
+### Sequential exposure filling
+
+- Captures always fill the next available empty mirrored exposure in exposure-number order.
+- Previously captured exposures are not overwritten.
+- If no empty exposure remains, the V2 pipeline throws a local business error instead of reusing a filled slot.
+
+### Development diagnostics
+
+- The V2 personal roll detail screen now shows richer diagnostics when `AppConfig.V2.isExposureDiagnosticsEnabled` is enabled:
+  - exposure number
+  - sync state
+  - local file exists
+  - local file path
+  - capture timestamp
+  - optional thumbnail preview
+- The V2 capture screen also exposes a debug-only source picker when multiple providers are available.
+
+### Manual validation
+
+With V2 bootstrap and development auth enabled:
+
+1. Launch the app.
+2. Select the Creator development identity.
+3. Create and start a V2 personal roll.
+4. Open the roll detail.
+5. Press `Capture Next Exposure`.
+6. On device:
+   - use the device camera provider
+7. On simulator or in debug testing:
+   - use the development sample provider
+8. Confirm each capture fills the next empty exposure only.
+9. Confirm progress updates from local mirrored exposures.
+10. Confirm captured exposures become `LOCAL_ONLY`.
+11. Confirm local original files exist on disk.
+12. Confirm no upload occurs.
+13. Confirm normal hidden-film mode still hides captured images when diagnostics are disabled.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata CODE_SIGNING_ALLOWED=NO build
+```
+
+### Test command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests -only-testing:snaprollTests/V2LocalCapturePipelineTests -only-testing:snaprollTests/V2CloudHomeViewModelTests test
+```
+
+### Results
+
+- full iOS build succeeded
+- targeted Phase 8A/8B V2 test coverage passed on simulator
+- new passing coverage includes:
+  - start roll fetch/mirror flow
+  - reopening does not duplicate mirrored exposures
+  - progress starts at zero captured
+  - diagnostics visibility rules
+  - image-source provider integration
+  - next empty exposure selection
+  - local-original persistence
+  - `LOCAL_ONLY` assignment
+  - sequential filling
+  - no overwrite of existing exposures
+
+### Assumptions / follow-up work
+
+- The development image provider currently uses a generated sample image rather than a photo picker. This keeps the Phase 8B source abstraction simple while still satisfying simulator/development testing.
+- The V2 capture screen is intentionally minimal and debug-oriented, not final product UI.
+- Phase 9 should build on this by:
+  - generating upload JPEG copies
+  - moving `LOCAL_ONLY` exposures through upload/sync states
+  - calling `complete_exposure()`
+  - preserving offline-first capture while sync runs in the background
+
 ## Phase 8A – V2 Personal Roll Start & Exposure Slot Mirroring
 
 ### Files changed

@@ -2,17 +2,21 @@ import SwiftUI
 
 struct V2PersonalRollDetailView: View {
     @StateObject private var viewModel: V2PersonalRollDetailViewModel
+    @State private var isShowingCaptureView = false
+    private let dependencies: V2DependencyContainer
 
     init(
         rollID: UUID,
         dependencies: V2DependencyContainer
     ) {
+        self.dependencies = dependencies
         _viewModel = StateObject(
             wrappedValue: V2PersonalRollDetailViewModel(
                 rollID: rollID,
                 rollRepository: dependencies.rollRepository,
                 exposureRepository: dependencies.exposureRepository,
-                exposureMirrorStore: dependencies.exposureMirrorStore
+                exposureMirrorStore: dependencies.exposureMirrorStore,
+                photoStorageService: dependencies.photoStorageService
             )
         )
     }
@@ -42,8 +46,24 @@ struct V2PersonalRollDetailView: View {
         )
         .navigationTitle(viewModel.roll?.title ?? "Roll")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $isShowingCaptureView) {
+            if let roll = viewModel.roll {
+                V2CaptureView(
+                    roll: roll,
+                    dependencies: dependencies,
+                    onCaptureCompleted: {
+                        await viewModel.load()
+                    }
+                )
+            }
+        }
         .task {
             await viewModel.load()
+        }
+        .onAppear {
+            Task {
+                await viewModel.load()
+            }
         }
     }
 
@@ -85,6 +105,23 @@ struct V2PersonalRollDetailView: View {
                         .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
                 )
                 .disabled(viewModel.isStartingRoll)
+            }
+
+            if viewModel.shouldShowCaptureAction {
+                Button {
+                    isShowingCaptureView = true
+                } label: {
+                    Text("Capture Next Exposure")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.92))
+                )
             }
 
             if case .failed(let message) = viewModel.state {
@@ -136,6 +173,23 @@ struct V2PersonalRollDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
 
+                        Text(row.localFileExists ? "Local file exists" : "No local file")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.72))
+
+                        if let localOriginalPath = row.localOriginalPath {
+                            Text(localOriginalPath)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.white.opacity(0.58))
+                                .textSelection(.enabled)
+                        }
+
+                        if let captureTimestamp = row.captureTimestamp {
+                            Text(captureTimestamp.formatted(date: .abbreviated, time: .standard))
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
                         Text(row.id.uuidString)
                             .font(.caption2.monospaced())
                             .foregroundStyle(.white.opacity(0.58))
@@ -145,6 +199,15 @@ struct V2PersonalRollDetailView: View {
                             .font(.caption2.monospaced())
                             .foregroundStyle(.white.opacity(0.58))
                             .textSelection(.enabled)
+
+                        if row.localFileExists, let localOriginalPath = row.localOriginalPath,
+                           let image = dependencies.photoStorageService.loadImage(at: localOriginalPath) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 92, height: 124)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)

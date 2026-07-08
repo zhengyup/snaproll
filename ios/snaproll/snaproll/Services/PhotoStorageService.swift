@@ -21,6 +21,19 @@ final class PhotoStorageService {
         return fileURL
     }
 
+    func saveOriginalImageData(
+        _ data: Data,
+        for rollID: UUID,
+        exposureID: UUID,
+        preferredFileExtension: String? = nil
+    ) throws -> URL {
+        let fileExtension = preferredFileExtension ?? fileExtension(forImageData: data) ?? "jpg"
+        let rollDirectory = try rollDirectoryURL(for: rollID)
+        let fileURL = rollDirectory.appendingPathComponent("\(exposureID.uuidString).\(fileExtension)")
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
     func persistentLocalPath(for fileURL: URL) -> String {
         let storageRoot = storageRootDirectoryURL().path
         let filePath = fileURL.path
@@ -104,6 +117,22 @@ final class PhotoStorageService {
         }
 
         return String(absolutePath[markerRange.upperBound...])
+    }
+
+    private func fileExtension(forImageData data: Data) -> String? {
+        if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+            return "jpg"
+        }
+
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            return "png"
+        }
+
+        if data.starts(with: [0x47, 0x49, 0x46, 0x38]) {
+            return "gif"
+        }
+
+        return nil
     }
 }
 

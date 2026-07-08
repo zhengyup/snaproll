@@ -239,6 +239,16 @@ private final class InMemoryExposureMirrorStore: ExposureMirrorStore {
         exposuresByRollID[rollID] = merged
         return merged
     }
+
+    func saveExposure(_ exposure: LocalExposure) async throws {
+        var exposures = exposuresByRollID[exposure.roll_id] ?? []
+        if let index = exposures.firstIndex(where: { $0.id == exposure.id }) {
+            exposures[index] = exposure
+        } else {
+            exposures.append(exposure)
+        }
+        exposuresByRollID[exposure.roll_id] = exposures.sorted { $0.exposure_number < $1.exposure_number }
+    }
 }
 
 private func makeRoll(

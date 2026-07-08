@@ -7,6 +7,7 @@ struct V2DependencyContainer {
     let exposureRepository: any ExposureRepository
     let exposureMirrorStore: any ExposureMirrorStore
     let inviteRepository: any InviteRepository
+    let photoStorageService: PhotoStorageService
 
     static func live(
         authenticationMode: V2AuthenticationMode = AppConfig.V2.authenticationMode,
@@ -32,7 +33,8 @@ struct V2DependencyContainer {
             participantRepository: SupabaseParticipantRepository(clientProvider: clientProvider),
             exposureRepository: SupabaseExposureRepository(clientProvider: clientProvider),
             exposureMirrorStore: FileBackedExposureMirrorStore(),
-            inviteRepository: SupabaseInviteRepository(clientProvider: clientProvider)
+            inviteRepository: SupabaseInviteRepository(clientProvider: clientProvider),
+            photoStorageService: PhotoStorageService()
         )
     }
 }
