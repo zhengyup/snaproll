@@ -12,6 +12,7 @@ struct V2CloudHomeView: View {
     ) {
         self.sessionStore = sessionStore
         self.developmentAuthSettings = developmentAuthSettings
+        self.dependencies = dependencies
         _viewModel = StateObject(
             wrappedValue: V2CloudHomeViewModel(
                 authRepository: dependencies.authRepository,
@@ -19,6 +20,8 @@ struct V2CloudHomeView: View {
             )
         )
     }
+
+    private let dependencies: V2DependencyContainer
 
     var body: some View {
         NavigationStack {
@@ -44,6 +47,7 @@ struct V2CloudHomeView: View {
                     V2CloudRollListSection(
                         state: viewModel.state,
                         rolls: viewModel.rolls,
+                        dependencies: dependencies,
                         onRetry: {
                             Task {
                                 await viewModel.refresh()
@@ -232,6 +236,7 @@ private struct V2CloudCreateRollPanel: View {
 private struct V2CloudRollListSection: View {
     let state: V2CloudHomeState
     let rolls: [LocalRoll]
+    let dependencies: V2DependencyContainer
     let onRetry: () -> Void
 
     var body: some View {
@@ -270,7 +275,15 @@ private struct V2CloudRollListSection: View {
             case .loaded:
                 VStack(spacing: 12) {
                     ForEach(rolls, id: \.id) { roll in
-                        V2CloudRollCard(roll: roll)
+                        NavigationLink {
+                            V2PersonalRollDetailView(
+                                rollID: roll.id,
+                                dependencies: dependencies
+                            )
+                        } label: {
+                            V2CloudRollCard(roll: roll)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -335,7 +348,7 @@ private struct V2CloudRollCard: View {
             HStack {
                 Text(statusLabel)
                 Spacer()
-                Text("12 exp")
+                Text("\(roll.exposures_per_participant) exp")
             }
             .font(.footnote.weight(.medium))
             .foregroundStyle(.white.opacity(0.62))

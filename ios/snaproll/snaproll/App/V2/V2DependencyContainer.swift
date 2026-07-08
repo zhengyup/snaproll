@@ -5,6 +5,7 @@ struct V2DependencyContainer {
     let rollRepository: any RollRepository
     let participantRepository: any ParticipantRepository
     let exposureRepository: any ExposureRepository
+    let exposureMirrorStore: any ExposureMirrorStore
     let inviteRepository: any InviteRepository
 
     static func live(
@@ -30,6 +31,7 @@ struct V2DependencyContainer {
             rollRepository: SupabaseRollRepository(clientProvider: clientProvider),
             participantRepository: SupabaseParticipantRepository(clientProvider: clientProvider),
             exposureRepository: SupabaseExposureRepository(clientProvider: clientProvider),
+            exposureMirrorStore: FileBackedExposureMirrorStore(),
             inviteRepository: SupabaseInviteRepository(clientProvider: clientProvider)
         )
     }

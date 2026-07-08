@@ -1,5 +1,145 @@
 # V2 Implementation Log
 
+## Phase 8A – V2 Personal Roll Start & Exposure Slot Mirroring
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2CloudHomeView.swift`
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+
+Repositories / local mirror:
+
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/Repositories/V2LocalExposureMirrorStore.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+
+View models / config:
+
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+- `ios/snaproll/snaproll/Utilities/AppConfig.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2CloudHomeViewModelTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRollDetailViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### What changed
+
+- Added a minimal V2 personal roll detail screen reachable from the V2 cloud roll list.
+- Added `RollRepository.startRoll(id:)` and wired the live repository to the backend `start_roll()` RPC.
+- Added a local exposure mirror store that persists mirrored exposure-slot records to a V2-specific JSON file.
+- After a roll starts, the client now:
+  - reloads roll metadata from cloud
+  - fetches backend-created exposure slots
+  - mirrors those slots into the local exposure model
+  - derives progress from the local mirrored exposures
+
+### Start roll implementation
+
+- `V2PersonalRollDetailViewModel.startRoll()` calls `RollRepository.startRoll(id:)`.
+- The live repository calls the existing backend `start_roll()` RPC.
+- The backend remains authoritative for:
+  - creating exposure slots
+  - transitioning the roll into `SHOOTING`
+- The client never generates exposure slots itself.
+
+### Exposure slot mirroring
+
+- After start, the detail view model fetches all cloud exposure rows for the roll through `ExposureRepository.fetchExposures(forRollID:)`.
+- Those cloud exposures are passed into `FileBackedExposureMirrorStore.mirrorCloudExposures(...)`.
+- The mirror store reconciles by cloud exposure `id` so each cloud exposure has exactly one local mirrored exposure record.
+- The mirrored records currently store:
+  - exposure id
+  - roll id
+  - participant id
+  - exposure number
+  - render seed
+  - local/original/upload/rendered paths
+  - sync state
+  - timestamps
+
+### Local mirror lifecycle
+
+- Before start:
+  - the roll detail shows roll metadata and zero mirrored exposures
+- After start:
+  - the cloud exposure list is mirrored locally
+  - progress reads from that local mirrored list
+- On reopen:
+  - the roll metadata reloads from cloud
+  - started rolls refetch cloud exposures
+  - the mirror store replaces/reconciles by exposure id instead of appending duplicates
+- This phase intentionally does not:
+  - capture photos
+  - generate JPEG upload copies
+  - upload to Storage
+  - call `complete_exposure()`
+  - reveal photos
+
+### Development diagnostics
+
+- Added a development-only diagnostics section on the V2 personal roll detail screen.
+- When `AppConfig.V2.isExposureDiagnosticsEnabled` is enabled, the detail view may show:
+  - exposure number
+  - local sync state
+  - cloud exposure id
+  - render seed
+- No thumbnails or capture diagnostics are shown in this phase.
+
+### Manual validation
+
+With V2 session bootstrap and development auth enabled:
+
+1. Launch app.
+2. Select the Creator development identity.
+3. Create a V2 personal roll.
+4. Open the roll detail.
+5. Press `Start Roll`.
+6. Confirm the roll status becomes `SHOOTING`.
+7. Confirm exposure slots exist in Supabase.
+8. Confirm local mirrored exposure records are created.
+9. Confirm progress shows `0 / N captured`.
+10. Close and reopen the roll.
+11. Confirm mirrored exposure records are reused rather than duplicated.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata CODE_SIGNING_ALLOWED=NO build
+```
+
+### Test commands executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests test
+```
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests test
+```
+
+### Results
+
+- full iOS build succeeded
+- new Phase 8A code compiled successfully
+- unit-test execution was interrupted by the simulator environment before completion:
+  - Xcode could build the tests
+  - the simulator test session later failed to launch the app cleanly and reported `server died` / `TEST INTERRUPTED`
+
+### Assumptions / follow-up work
+
+- The local exposure mirror is persisted through a V2-specific local JSON file for this phase so the working copy survives reopening the roll without requiring the Phase 9 sync engine.
+- This keeps V1 behavior untouched and avoids prematurely wiring capture or upload logic into the V2 path.
+- Phase 8B should build on this mirror as the client-side working copy for local capture.
+- A later phase can replace the mirror-store persistence layer with the planned SwiftData-backed local repository once the broader V2 local data path is integrated.
+
 ## Documentation Update – Phase 8 Local-First Shooting vs Phase 9 Upload/Sync
 
 - Clarified that Phase 8 is local-first personal-roll shooting only:

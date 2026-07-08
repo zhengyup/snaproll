@@ -27,9 +27,11 @@ enum AppConfig {
         // Development-only auth path for building shared-roll features without Apple or Google sign-in.
         static let isDevelopmentAuthenticationEnabled = true
         static let developmentIdentity: DevelopmentAuthIdentity = .creator
+        static let isExposureDiagnosticsEnabled = true
         #else
         static let isDevelopmentAuthenticationEnabled = false
         static let developmentIdentity: DevelopmentAuthIdentity = .creator
+        static let isExposureDiagnosticsEnabled = false
         #endif
 
         static var authenticationMode: V2AuthenticationMode {

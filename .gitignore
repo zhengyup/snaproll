@@ -15,7 +15,7 @@ xcuserdata/
 
 # SwiftPM
 .build/
-.build-cache
+.build-cache/
 .build-home
 .swiftpm/
 

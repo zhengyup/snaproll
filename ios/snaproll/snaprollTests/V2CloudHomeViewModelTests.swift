@@ -227,6 +227,8 @@ private actor RecordingFakeRollRepository: RollRepository {
         return CreateRollResult(rollID: UUID(), inviteToken: nil)
     }
 
+    func startRoll(id: UUID) async throws {}
+
     func saveRoll(_ roll: LocalRoll) async throws {}
     func deleteRoll(id: UUID) async throws {}
 }

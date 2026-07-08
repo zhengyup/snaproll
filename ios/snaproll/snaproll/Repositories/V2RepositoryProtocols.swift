@@ -25,6 +25,7 @@ protocol RollRepository: Sendable {
     func fetchRoll(id: UUID) async throws -> LocalRoll?
     func fetchRolls() async throws -> [LocalRoll]
     func fetchAllRolls() async throws -> [LocalRoll]
+    func startRoll(id: UUID) async throws
     func createRoll(
         title: String,
         type: V2Domain.RollType,
@@ -51,6 +52,12 @@ protocol ExposureRepository: Sendable {
     func fetchExposure(id: UUID) async throws -> LocalExposure?
     func saveExposure(_ exposure: LocalExposure) async throws
     func saveExposures(_ exposures: [LocalExposure]) async throws
+}
+
+@MainActor
+protocol ExposureMirrorStore: AnyObject {
+    func fetchExposures(forRollID rollID: UUID) async throws -> [LocalExposure]
+    func mirrorCloudExposures(_ exposures: [LocalExposure], forRollID rollID: UUID) async throws -> [LocalExposure]
 }
 
 protocol InviteRepository: Sendable {

@@ -367,6 +367,14 @@ final class SupabaseRollRepository: RollRepository, @unchecked Sendable, Supabas
         }
     }
 
+    func startRoll(id: UUID) async throws {
+        _ = try await withClient(operation: "roll.startRoll") { client in
+            try await client
+                .rpc("start_roll", params: RollIDRPCRequest(p_roll_id: id))
+                .execute()
+        }
+    }
+
     func saveRoll(_ roll: LocalRoll) async throws {
         throw V2RepositoryError.unsupportedOperation(
             "saveRoll(_:) is deferred until the local SwiftData write path is integrated."
