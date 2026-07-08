@@ -24,14 +24,20 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let syncState: V2Domain.ExposureSyncState
         let renderSeed: String
         let localFileExists: Bool
+        let localUploadFileExists: Bool
         let localOriginalPath: String?
+        let uploadJPEGPath: String?
+        let cloudStoragePath: String?
         let captureTimestamp: Date?
+        let uploadedAt: Date?
     }
 
     @Published private(set) var state: V2PersonalRollDetailState = .idle
     @Published private(set) var roll: LocalRoll?
     @Published private(set) var mirroredExposures: [LocalExposure] = []
     @Published private(set) var isStartingRoll = false
+    @Published private(set) var isUploadingPendingExposures = false
+    @Published private(set) var lastUploadMessage: String?
 
     let rollID: UUID
 
@@ -39,6 +45,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     private let exposureRepository: any ExposureRepository
     private let exposureMirrorStore: any ExposureMirrorStore
     private let photoStorageService: PhotoStorageService
+    private let uploadPipeline: (any ExposureUploadSyncing)?
     private let diagnosticsEnabled: Bool
     private let activeDevelopmentIdentityLabel: String?
 
@@ -48,6 +55,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         exposureRepository: any ExposureRepository,
         exposureMirrorStore: any ExposureMirrorStore,
         photoStorageService: PhotoStorageService? = nil,
+        uploadPipeline: (any ExposureUploadSyncing)? = nil,
         diagnosticsEnabled: Bool? = nil,
         activeDevelopmentIdentityLabel: String? = nil
     ) {
@@ -56,6 +64,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         self.exposureRepository = exposureRepository
         self.exposureMirrorStore = exposureMirrorStore
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
+        self.uploadPipeline = uploadPipeline
         self.diagnosticsEnabled = diagnosticsEnabled ?? AppConfig.V2.isExposureDiagnosticsEnabled
         self.activeDevelopmentIdentityLabel = activeDevelopmentIdentityLabel
     }
@@ -113,14 +122,26 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
                 syncState: exposure.sync_state,
                 renderSeed: exposure.render_seed,
                 localFileExists: exposure.local_original_path.map { photoStorageService.fileExists(at: $0) } ?? false,
+                localUploadFileExists: exposure.upload_jpeg_path.map { photoStorageService.fileExists(at: $0) } ?? false,
                 localOriginalPath: exposure.local_original_path,
-                captureTimestamp: exposure.captured_at
+                uploadJPEGPath: exposure.upload_jpeg_path,
+                cloudStoragePath: exposure.cloud_storage_path,
+                captureTimestamp: exposure.captured_at,
+                uploadedAt: exposure.uploaded_at
             )
         }
     }
 
     var shouldShowDiagnostics: Bool {
         diagnosticsEnabled
+    }
+
+    var uploadableExposureCount: Int {
+        mirroredExposures.filter { $0.sync_state == .localOnly }.count
+    }
+
+    var shouldShowUploadAction: Bool {
+        diagnosticsEnabled && uploadPipeline != nil && uploadableExposureCount > 0
     }
 
     var diagnosticsSummary: DiagnosticsSummary? {
@@ -165,6 +186,29 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         }
     }
 
+    func uploadPendingExposures() async {
+        guard let uploadPipeline, !isUploadingPendingExposures else {
+            return
+        }
+
+        isUploadingPendingExposures = true
+        lastUploadMessage = nil
+        defer { isUploadingPendingExposures = false }
+
+        do {
+            let summary = try await uploadPipeline.uploadPendingExposures(forRollID: rollID)
+            try await reloadLocalMirror()
+
+            if summary.failedCount > 0 {
+                lastUploadMessage = "\(summary.uploadedCount) uploaded, \(summary.failedCount) failed"
+            } else {
+                lastUploadMessage = "\(summary.uploadedCount) exposure(s) uploaded"
+            }
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
     private func reloadFromSources() async throws {
         guard let fetchedRoll = try await rollRepository.fetchRoll(id: rollID) else {
             throw V2RepositoryError.notFound("The selected roll could not be found.")
@@ -180,5 +224,10 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
 
         roll = fetchedRoll
         mirroredExposures = mirrored.sorted(by: { $0.exposure_number < $1.exposure_number })
+    }
+
+    private func reloadLocalMirror() async throws {
+        mirroredExposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
+            .sorted(by: { $0.exposure_number < $1.exposure_number })
     }
 }

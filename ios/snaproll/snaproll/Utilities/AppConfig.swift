@@ -22,6 +22,7 @@ enum AppConfig {
     enum V2 {
         // Keep this disabled until V2 auth/session bootstrap is ready for manual rollout.
         static let isSessionBootstrapEnabled = true
+        static let storageBucketName = "snaproll-originals"
 
         #if DEBUG
         // Development-only auth path for building shared-roll features without Apple or Google sign-in.

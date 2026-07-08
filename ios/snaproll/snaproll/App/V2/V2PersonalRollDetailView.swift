@@ -18,6 +18,11 @@ struct V2PersonalRollDetailView: View {
                 exposureRepository: dependencies.exposureRepository,
                 exposureMirrorStore: dependencies.exposureMirrorStore,
                 photoStorageService: dependencies.photoStorageService,
+                uploadPipeline: V2ExposureUploadPipeline(
+                    exposureMirrorStore: dependencies.exposureMirrorStore,
+                    photoStorageService: dependencies.photoStorageService,
+                    storageRepository: dependencies.exposureAssetStorageRepository
+                ),
                 activeDevelopmentIdentityLabel: developmentIdentity?.displayName
             )
         )
@@ -160,6 +165,38 @@ struct V2PersonalRollDetailView: View {
                 .font(.headline)
                 .foregroundStyle(.white.opacity(0.95))
 
+            if viewModel.shouldShowUploadAction {
+                Button {
+                    Task {
+                        await viewModel.uploadPendingExposures()
+                    }
+                } label: {
+                    if viewModel.isUploadingPendingExposures {
+                        ProgressView()
+                            .tint(.black)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Upload Pending Exposures")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+                )
+                .disabled(viewModel.isUploadingPendingExposures)
+            }
+
+            if let lastUploadMessage = viewModel.lastUploadMessage {
+                Text(lastUploadMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
             if let summary = viewModel.diagnosticsSummary {
                 VStack(alignment: .leading, spacing: 6) {
                     if let activeIdentityLabel = summary.activeIdentityLabel {
@@ -201,6 +238,12 @@ struct V2PersonalRollDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
 
+                        if row.uploadJPEGPath != nil {
+                            Text(row.localUploadFileExists ? "Upload JPEG exists" : "Upload JPEG missing")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+
                         if let localOriginalPath = row.localOriginalPath {
                             Text(localOriginalPath)
                                 .font(.caption2.monospaced())
@@ -208,8 +251,28 @@ struct V2PersonalRollDetailView: View {
                                 .textSelection(.enabled)
                         }
 
+                        if let uploadJPEGPath = row.uploadJPEGPath {
+                            Text(uploadJPEGPath)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.white.opacity(0.58))
+                                .textSelection(.enabled)
+                        }
+
+                        if let cloudStoragePath = row.cloudStoragePath {
+                            Text(cloudStoragePath)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.white.opacity(0.58))
+                                .textSelection(.enabled)
+                        }
+
                         if let captureTimestamp = row.captureTimestamp {
                             Text(captureTimestamp.formatted(date: .abbreviated, time: .standard))
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        if let uploadedAt = row.uploadedAt {
+                            Text(uploadedAt.formatted(date: .abbreviated, time: .standard))
                                 .font(.caption2)
                                 .foregroundStyle(.white.opacity(0.58))
                         }

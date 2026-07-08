@@ -79,6 +79,10 @@ protocol SyncRepository: Sendable {
     func pendingExposureIDs() async throws -> [UUID]
 }
 
+protocol ExposureAssetStorageRepository: Sendable {
+    func uploadJPEG(data: Data, to storagePath: String) async throws
+}
+
 protocol RenderCacheRepository: Sendable {
     func cachedRenderPath(forExposureID exposureID: UUID) async throws -> String?
     func saveRenderedCachePath(_ path: String?, forExposureID exposureID: UUID) async throws

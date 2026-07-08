@@ -618,3 +618,28 @@ final class SupabaseInviteRepository: InviteRepository, @unchecked Sendable, Sup
         )
     }
 }
+
+final class SupabaseExposureAssetStorageRepository: ExposureAssetStorageRepository, @unchecked Sendable, SupabaseRepositorySupporting {
+    let clientProvider: V2SupabaseClientProvider
+    let logger = RepositoryLogger.logger(category: "V2ExposureAssetStorageRepository")
+
+    init(clientProvider: V2SupabaseClientProvider) {
+        self.clientProvider = clientProvider
+    }
+
+    func uploadJPEG(data: Data, to storagePath: String) async throws {
+        _ = try await withClient(operation: "storage.uploadExposureJPEG") { client in
+            try await client.storage
+                .from(AppConfig.V2.storageBucketName)
+                .upload(
+                    storagePath,
+                    data: data,
+                    options: FileOptions(
+                        cacheControl: "3600",
+                        contentType: "image/jpeg",
+                        upsert: false
+                    )
+                )
+        }
+    }
+}

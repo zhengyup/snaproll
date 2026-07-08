@@ -3,10 +3,15 @@ import UIKit
 
 final class PhotoStorageService {
     private let fileManager: FileManager
+    private let storageRootOverride: URL?
     private let legacyStoragePathMarker = "/Snaproll/Rolls/"
 
-    init(fileManager: FileManager = .default) {
+    init(
+        fileManager: FileManager = .default,
+        storageRootDirectoryURL: URL? = nil
+    ) {
         self.fileManager = fileManager
+        self.storageRootOverride = storageRootDirectoryURL
     }
 
     func savePhotoData(_ data: Data, for rollID: UUID, photoID: UUID) throws -> URL {
@@ -30,6 +35,17 @@ final class PhotoStorageService {
         let fileExtension = preferredFileExtension ?? fileExtension(forImageData: data) ?? "jpg"
         let rollDirectory = try rollDirectoryURL(for: rollID)
         let fileURL = rollDirectory.appendingPathComponent("\(exposureID.uuidString).\(fileExtension)")
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
+    func saveUploadJPEGData(
+        _ data: Data,
+        for rollID: UUID,
+        exposureID: UUID
+    ) throws -> URL {
+        let rollDirectory = try rollDirectoryURL(for: rollID)
+        let fileURL = rollDirectory.appendingPathComponent("\(exposureID.uuidString)-upload.jpg")
         try data.write(to: fileURL, options: .atomic)
         return fileURL
     }
@@ -69,6 +85,30 @@ final class PhotoStorageService {
         return UIImage(data: data)
     }
 
+    func loadData(at localPath: String) -> Data? {
+        let resolvedURL = resolvedFileURL(for: localPath)
+
+        guard fileManager.fileExists(atPath: resolvedURL.path) else {
+            return nil
+        }
+
+        return try? Data(contentsOf: resolvedURL)
+    }
+
+    func makeUploadJPEGData(from localPath: String) throws -> Data {
+        guard let imageData = loadData(at: localPath),
+              let image = UIImage(data: imageData) else {
+            throw PhotoStorageServiceError.fileNotFound
+        }
+
+        let normalizedImage = normalizedImageForUpload(image)
+        guard let jpegData = normalizedImage.jpegData(compressionQuality: AppConfig.Photos.jpegCompressionQuality) else {
+            throw PhotoStorageServiceError.compressionFailed
+        }
+
+        return jpegData
+    }
+
     func normalizedLocalPath(_ localPath: String) -> String {
         let resolvedURL = resolvedFileURL(for: localPath)
         return persistentLocalPath(for: resolvedURL)
@@ -87,6 +127,10 @@ final class PhotoStorageService {
     }
 
     private func storageRootDirectoryURL() -> URL {
+        if let storageRootOverride {
+            return storageRootOverride
+        }
+
         let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         let snaprollDirectory = baseDirectory.appendingPathComponent("Snaproll", isDirectory: true)
@@ -134,15 +178,33 @@ final class PhotoStorageService {
 
         return nil
     }
+
+    private func normalizedImageForUpload(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else {
+            return image
+        }
+
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+    }
 }
 
 enum PhotoStorageServiceError: LocalizedError {
     case compressionFailed
+    case fileNotFound
 
     var errorDescription: String? {
         switch self {
         case .compressionFailed:
             return "The photo could not be prepared for local storage."
+        case .fileNotFound:
+            return "The local photo file could not be found."
         }
     }
 }

@@ -1,5 +1,192 @@
 # V2 Implementation Log
 
+## Phase 9A Follow-Up – Storage Bucket & Policies
+
+- Added migration:
+  - `supabase/migrations/20260708133000_phase_9a_storage_bucket_and_policies.sql`
+- What it provisions:
+  - private Storage bucket:
+    - `snaproll-originals`
+  - helper-based Storage access checks:
+    - `public.can_upload_snaproll_original(...)`
+    - `public.can_read_snaproll_original(...)`
+  - authenticated Storage grants for:
+    - `storage.buckets`
+    - `storage.objects`
+  - Storage policies for:
+    - reading the `snaproll-originals` bucket metadata
+    - uploading only to the caller's own canonical pending-exposure path
+    - reading originals only after a roll reaches `REVEALED`
+- Why this was needed:
+  - Phase 9A app uploads were in place, but Supabase Storage had not yet been provisioned, so uploads failed with:
+    - `Bucket not found`
+- Canonical upload contract enforced by the policy:
+  - `rolls/{roll_id}/participants/{participant_id}/001.jpg`
+  - padded three-digit exposure filenames are required
+  - only JPEG paths are accepted
+- Security / architecture notes:
+  - the bucket remains private
+  - no update or delete object policies were added in this phase
+  - upload checks run through security-definer helpers so the policy layer does not repeat the earlier recursive RLS pattern
+  - object reads remain blocked until the roll is `REVEALED`, preserving the hidden-film product rule at the backend layer too
+
+## Phase 9A – V2 Upload Pipeline (JPEG Generation + Storage Upload)
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+
+Repositories:
+
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+
+Services:
+
+- `ios/snaproll/snaproll/Services/PhotoStorageService.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureUploadPipeline.swift`
+
+View models:
+
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2ExposureUploadPipelineTests.swift`
+
+Utilities:
+
+- `ios/snaproll/snaproll/Utilities/AppConfig.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### Upload pipeline
+
+- Added a dedicated V2 upload synchronization service:
+  - `V2ExposureUploadPipeline`
+- The upload pipeline is separate from capture and only processes mirrored exposures with:
+  - `sync_state = LOCAL_ONLY`
+- The service now:
+  1. loads pending local exposures in exposure-number order
+  2. verifies the local original exists
+  3. marks the exposure `UPLOADING`
+  4. generates a canonical JPEG upload copy locally
+  5. uploads that JPEG to Supabase Storage
+  6. records upload metadata locally
+  7. transitions the exposure to `METADATA_PENDING`
+- This phase still does not:
+  - call `complete_exposure()`
+  - mark the cloud exposure complete
+  - advance the roll lifecycle
+
+### JPEG generation
+
+- Extended `PhotoStorageService` so V2 can:
+  - read local original data
+  - normalize image orientation for upload
+  - generate a JPEG upload copy without mutating the original capture
+  - persist the local upload JPEG copy separately
+- The original local capture remains untouched in `local_original_path`.
+- The upload artifact is stored separately in `upload_jpeg_path`.
+
+### Canonical storage layout
+
+- Added a dedicated storage boundary:
+  - `ExposureAssetStorageRepository`
+  - `SupabaseExposureAssetStorageRepository`
+- Live uploads now use the agreed bucket:
+  - `snaproll-originals`
+- Live uploads now use the agreed canonical padded path:
+  - `rolls/{roll_id}/participants/{participant_id}/001.jpg`
+- The upload pipeline uses `LocalExposure.canonicalCloudStoragePath`, so the padded numbering rule remains centralized.
+
+### Local state transitions
+
+- Successful upload path:
+
+```text
+LOCAL_ONLY
+→ UPLOADING
+→ METADATA_PENDING
+```
+
+- On successful upload, the mirrored exposure records:
+  - `upload_jpeg_path`
+  - `cloud_storage_path`
+  - `uploaded_at`
+  - `sync_state = METADATA_PENDING`
+
+- On upload failure:
+  - the original local capture is preserved
+  - `last_error` is recorded
+  - the exposure returns to `LOCAL_ONLY`
+  - the exposure remains retryable by a future Phase 9 retry pass
+
+### Development visibility
+
+- In development diagnostics, the V2 personal roll detail screen can now show:
+  - upload button for pending local exposures
+  - upload JPEG existence
+  - upload JPEG local path
+  - cloud storage path
+  - uploaded timestamp
+- This remains behind the existing debug visibility path.
+- Normal hidden-film behavior remains unchanged outside development diagnostics.
+
+### Manual validation
+
+With V2 bootstrap and development auth enabled:
+
+1. Launch the app.
+2. Select a development identity.
+3. Create and start a V2 personal roll.
+4. Capture one or more exposures so they become `LOCAL_ONLY`.
+5. Open the V2 personal roll detail screen.
+6. In development diagnostics, press `Upload Pending Exposures`.
+7. Confirm:
+   - local upload JPEGs are created
+   - exposure paths use padded numbering
+   - files appear in the `snaproll-originals` bucket
+   - local exposures transition to `METADATA_PENDING`
+8. Confirm cloud exposure rows are still incomplete because `complete_exposure()` is not called in this phase.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata CODE_SIGNING_ALLOWED=NO build
+```
+
+### Test commands executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests -only-testing:snaprollTests/V2LocalCapturePipelineTests -only-testing:snaprollTests/V2ImageSourceProviderTests -only-testing:snaprollTests/V2CloudHomeViewModelTests -only-testing:snaprollTests/V2ExposureUploadPipelineTests test
+```
+
+```text
+xcodebuild -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase9a CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2ExposureUploadPipelineTests test
+```
+
+### Results
+
+- full iOS build succeeded
+- the new upload pipeline compiles cleanly as part of the app target
+- the simulator test runs were started and progressed through cold package/test-bundle build setup, but the Xcode test harness did not complete within the session window after rebuilding dependencies and test bundles from scratch
+
+### Assumptions / follow-up work
+
+- The follow-up Storage migration now provisions the `snaproll-originals` bucket and its initial policies.
+- Phase 9B should build directly on this state by:
+  - calling `complete_exposure()`
+  - transitioning `METADATA_PENDING → SYNCED`
+  - adding retry and recovery behavior
+  - keeping capture fully local-first
+  - avoiding duplicate metadata completion calls
+
 ## Phase 8C – V2 Development Visibility & Simulator Capture Hardening
 
 ### Files changed

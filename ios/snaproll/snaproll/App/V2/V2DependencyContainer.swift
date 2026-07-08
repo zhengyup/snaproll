@@ -6,6 +6,7 @@ struct V2DependencyContainer {
     let participantRepository: any ParticipantRepository
     let exposureRepository: any ExposureRepository
     let exposureMirrorStore: any ExposureMirrorStore
+    let exposureAssetStorageRepository: any ExposureAssetStorageRepository
     let inviteRepository: any InviteRepository
     let photoStorageService: PhotoStorageService
 
@@ -33,6 +34,7 @@ struct V2DependencyContainer {
             participantRepository: SupabaseParticipantRepository(clientProvider: clientProvider),
             exposureRepository: SupabaseExposureRepository(clientProvider: clientProvider),
             exposureMirrorStore: FileBackedExposureMirrorStore(),
+            exposureAssetStorageRepository: SupabaseExposureAssetStorageRepository(clientProvider: clientProvider),
             inviteRepository: SupabaseInviteRepository(clientProvider: clientProvider),
             photoStorageService: PhotoStorageService()
         )
