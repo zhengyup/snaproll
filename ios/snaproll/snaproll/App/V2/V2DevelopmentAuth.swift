@@ -38,13 +38,13 @@ enum V2AuthenticationMode: Sendable, Equatable {
 }
 
 protocol DevelopmentAuthIdentityProviding: Sendable {
-    func selectedIdentity() -> DevelopmentAuthIdentity
+    func selectedIdentity() async -> DevelopmentAuthIdentity
 }
 
 struct FixedDevelopmentAuthIdentityProvider: DevelopmentAuthIdentityProviding {
     let identity: DevelopmentAuthIdentity
 
-    func selectedIdentity() -> DevelopmentAuthIdentity {
+    func selectedIdentity() async -> DevelopmentAuthIdentity {
         identity
     }
 }
@@ -125,7 +125,7 @@ struct DevelopmentAuthSessionResolver: Sendable {
     }
 
     func resolveSession() async throws -> AuthSession {
-        let identity = identityProvider.selectedIdentity()
+        let identity = await identityProvider.selectedIdentity()
         logger.debug("Development auth enabled for identity \(identity.debugLabel, privacy: .public)")
 
         let resolvedSession: DevelopmentAuthResolvedSession

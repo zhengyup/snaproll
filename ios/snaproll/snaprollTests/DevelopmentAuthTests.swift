@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import snaproll
 
+@MainActor
 struct DevelopmentAuthTests {
     @Test
     func developmentAuthReturnsSelectedCreatorIdentity() async throws {

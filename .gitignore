@@ -32,6 +32,7 @@ EOF
 .derivedData-ios/
 .derivedData-macos/
 .derivedData-ios-test/
+.deriveddata-tests/
 
 # image testing 
 film-references/

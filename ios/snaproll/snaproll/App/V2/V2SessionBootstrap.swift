@@ -107,9 +107,17 @@ final class V2SessionStore: ObservableObject {
 
 struct V2BootstrapEntryView: View {
     @StateObject private var sessionStore: V2SessionStore
+    private let dependencies: V2DependencyContainer
+    private let developmentAuthSettings: DevelopmentAuthSettings
 
-    init(sessionStore: V2SessionStore) {
+    init(
+        sessionStore: V2SessionStore,
+        dependencies: V2DependencyContainer,
+        developmentAuthSettings: DevelopmentAuthSettings
+    ) {
         _sessionStore = StateObject(wrappedValue: sessionStore)
+        self.dependencies = dependencies
+        self.developmentAuthSettings = developmentAuthSettings
     }
 
     var body: some View {
@@ -124,7 +132,11 @@ struct V2BootstrapEntryView: View {
                     message: "No Supabase session was found. V2 auth UI is not wired yet, so the safe path is to keep using the V1 experience until that phase is ready."
                 )
             case .signedIn:
-                HomeView()
+                V2CloudHomeView(
+                    sessionStore: sessionStore,
+                    developmentAuthSettings: developmentAuthSettings,
+                    dependencies: dependencies
+                )
             case .failed(let message):
                 VStack(spacing: 20) {
                     V2BootstrapStatusView(
@@ -142,7 +154,7 @@ struct V2BootstrapEntryView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if AppConfig.V2.isDevelopmentAuthenticationEnabled {
+            if AppConfig.V2.isDevelopmentAuthenticationEnabled, !isShowingCloudHome {
                 V2DevelopmentIdentityBadge(state: sessionStore.state)
                     .padding(.top, 16)
                     .padding(.trailing, 16)
@@ -151,6 +163,14 @@ struct V2BootstrapEntryView: View {
         .task {
             await sessionStore.bootstrapIfNeeded()
         }
+    }
+
+    private var isShowingCloudHome: Bool {
+        if case .signedIn = sessionStore.state {
+            return true
+        }
+
+        return false
     }
 }
 
@@ -194,11 +214,14 @@ private struct V2DevelopmentIdentityBadge: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            Text(identityLabel)
-                .font(.caption.weight(.semibold))
+            if sessionLabel == nil || sessionLabel == identityLabel {
+                Text(identityLabel)
+                    .font(.caption.weight(.semibold))
+            } else {
+                Text(identityLabel)
+                    .font(.caption.weight(.semibold))
 
-            if let sessionLabel {
-                Text(sessionLabel)
+                Text(sessionLabel ?? identityLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

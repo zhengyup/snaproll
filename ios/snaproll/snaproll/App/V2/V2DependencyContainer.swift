@@ -8,7 +8,8 @@ struct V2DependencyContainer {
     let inviteRepository: any InviteRepository
 
     static func live(
-        authenticationMode: V2AuthenticationMode = AppConfig.V2.authenticationMode
+        authenticationMode: V2AuthenticationMode = AppConfig.V2.authenticationMode,
+        developmentAuthIdentityProvider: (any DevelopmentAuthIdentityProviding)? = nil
     ) -> V2DependencyContainer {
         let clientProvider = V2SupabaseClientProvider()
         let authRepository: any AuthRepository
@@ -19,7 +20,7 @@ struct V2DependencyContainer {
         case .development(let identity):
             authRepository = DevelopmentAuthRepository(
                 clientProvider: clientProvider,
-                identityProvider: FixedDevelopmentAuthIdentityProvider(identity: identity),
+                identityProvider: developmentAuthIdentityProvider ?? FixedDevelopmentAuthIdentityProvider(identity: identity),
                 sessionStore: UserDefaultsDevelopmentAuthSessionStore()
             )
         }

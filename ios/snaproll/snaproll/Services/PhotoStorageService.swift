@@ -38,7 +38,7 @@ final class PhotoStorageService {
         guard fileManager.fileExists(atPath: fileURL.path) else {
             return
         }
-
+ 
         try fileManager.removeItem(at: fileURL)
     }
 

@@ -47,6 +47,179 @@
   - Phase 6 bootstrap can continue calling `ensure_profile()` without app-side changes
   - this closes the same class of ambiguity bug previously seen in Phase 2 RPC work
 
+## Phase 7 – V2 Cloud Personal Roll Foundation
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/SnaprollApp.swift`
+- `ios/snaproll/snaproll/App/V2/V2CloudHomeView.swift`
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/App/V2/V2DevelopmentAuth.swift`
+- `ios/snaproll/snaproll/App/V2/V2DevelopmentIdentityStore.swift`
+- `ios/snaproll/snaproll/App/V2/V2SessionBootstrap.swift`
+
+View model:
+
+- `ios/snaproll/snaproll/ViewModels/V2CloudHomeViewModel.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2CloudHomeViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### What changed
+
+- With the V2 feature flag enabled, a signed-in V2 session now routes into a minimal V2-only cloud home instead of the V1 `HomeView`.
+- Added a development-only identity store so the selected development identity can change at runtime without recompiling the app.
+- Added a minimal V2 cloud home surface that shows:
+  - current development identity
+  - current authenticated user/session
+  - loading / empty / failed states
+  - cloud-backed roll list
+  - create personal roll action
+  - refresh action
+
+### How V2 cloud personal rolls are created
+
+- The V2 cloud home calls `V2CloudHomeViewModel.createPersonalRoll()`.
+- That method calls `RollRepository.createRoll(...)`.
+- The live repository implementation uses the approved `create_roll(...)` RPC.
+- Personal-roll defaults used in this phase:
+  - `type = PERSONAL`
+  - `film_stock_id = kodakGold200`
+  - `exposures_per_participant = 12`
+  - `participant_cap = 1`
+- The backend remains responsible for creator/participant insertion.
+- This phase does not touch:
+  - `LocalStorageService`
+  - V1 `Roll`
+  - V1 `Photo`
+  - camera / upload / reveal flows
+
+### How visible rolls are scoped to current identity
+
+- The V2 home loads the current session through `AuthRepository`.
+- It fetches rolls through `RollRepository.fetchRolls()`.
+- Read-side scoping is enforced by the existing Supabase RLS:
+  - creator can see their own rolls
+  - participants can see rolls they belong to
+- For this phase, the V2 home filters the visible list to personal rolls.
+- Switching the development identity triggers:
+  - persisted identity update
+  - V2 session bootstrap retry
+  - reload of the visible cloud roll list
+
+### Manual testing with development identities
+
+1. Enable the V2 bootstrap and development auth flags in `ios/snaproll/snaproll/Utilities/AppConfig.swift`.
+2. Launch the app.
+3. Confirm the app enters the V2 bootstrap path and lands on `V2 Cloud Rolls`.
+4. Leave the segmented identity control on `Creator`.
+5. Create a personal roll and confirm it appears in the list.
+6. Switch the segmented identity control to `Participant A`.
+7. Confirm the Creator roll disappears.
+8. Create a Participant A personal roll and confirm it appears.
+9. Switch back to `Creator` and confirm the list changes back to the Creator-owned roll set.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata CODE_SIGNING_ALLOWED=NO build
+```
+
+### Test command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests test
+```
+
+### Results
+
+- build succeeded
+- tests succeeded
+
+New Phase 7 coverage includes:
+
+- V2 home loads rolls for current identity
+- V2 personal roll creation uses `PERSONAL`
+- reloading after identity change yields different user-scoped roll data
+- repository failures surface as error state
+
+### Assumptions / follow-up work
+
+- This phase intentionally keeps V1 behavior untouched when the V2 feature flag is disabled.
+- The new V2 cloud home is intentionally development-oriented, not final product UI.
+- The next phases still need to wire:
+  - personal roll start / exposure slots
+  - capture -> upload -> sync
+  - personal reveal / gallery
+- The build still emits pre-existing camera orientation deprecation warnings and some Swift 6 isolation warnings in older test code; these do not block Phase 7 functionality but should be cleaned up in a later hardening pass.
+
+## Phase 7 Follow-Up – Read RLS Recursion Fix
+
+- Added migration:
+  - `supabase/migrations/20260708002000_phase_7_read_rls_recursion_fix.sql`
+- Root cause:
+  - the Phase 4 read policy on `public.roll_participants` queried `public.roll_participants` inside its own `USING` clause
+  - `public.rolls` and `public.exposures` also depended on `roll_participants` checks
+  - once the V2 cloud home fetched user-scoped rolls, PostgreSQL raised:
+    - `infinite recursion detected in policy for relation "roll_participants"`
+- Fix applied:
+  - introduced security-definer helper functions:
+    - `public.is_roll_participant(...)`
+    - `public.is_roll_creator(...)`
+  - dropped the recursive read-side policies
+  - recreated the policies to call those helpers instead of querying RLS-protected tables directly inside the policy body
+- Impact:
+  - personal cloud rolls remain scoped to the authenticated user
+  - V2 roll fetches no longer recurse through `roll_participants` policy evaluation
+  - no app-side changes were required for this database fix
+
+## Phase 7 Follow-Up – Read RLS Helper Hardening
+
+- Added migration:
+  - `supabase/migrations/20260708004500_phase_7_read_rls_helper_hardening.sql`
+- Problem observed after the recursion fix:
+  - authenticated V2 roll reads could still fail with `permission denied for table rows`
+- Interpretation:
+  - the helper-based policy path still needed to run as an explicitly trusted membership / ownership check rather than under ordinary row-level restrictions
+- Fix applied:
+  - recreated `public.is_roll_participant(...)` and `public.is_roll_creator(...)`
+  - marked them as `security definer`
+  - set `row_security = off` in the helper execution context
+  - reassigned ownership to `postgres`
+  - dropped and recreated the read policies to bind them to the hardened helper definitions
+- Impact:
+  - authenticated reads for V2 personal roll lists should evaluate through the trusted helper path
+  - personal cloud roll visibility remains user-scoped
+  - no Swift or repository changes were required
+
+## Phase 7 Follow-Up – Read Grants For Authenticated
+
+- Added migration:
+  - `supabase/migrations/20260708011000_phase_7_read_grants_for_authenticated.sql`
+- Root cause:
+  - table-level `SELECT` privileges had not been granted to the `authenticated` role for the V2 read path
+  - PostgreSQL therefore rejected queries before RLS policy evaluation with:
+    - `permission denied for table rolls`
+- Fix applied:
+  - granted `usage` on schema `public` to `authenticated`
+  - granted `select` on:
+    - `public.profiles`
+    - `public.rolls`
+    - `public.roll_participants`
+    - `public.exposures`
+    - `public.invites`
+- Impact:
+  - authenticated client reads can now reach the read-side RLS policies
+  - row visibility remains policy-controlled
+  - direct writes remain blocked outside the approved RPC path
+
 ## Phase 6 – Development Authentication
 
 ### Files changed
