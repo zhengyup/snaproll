@@ -11,6 +11,8 @@ It follows:
 
 It must be proven before:
 
+- Phase 8 personal-roll shooting and exposure-slot mirroring
+- Phase 9 upload / sync
 - shared roll creation
 - invite / join flows
 - participant-scoped shared capture
@@ -34,6 +36,7 @@ Shared rolls must later reuse:
 - ownership rules
 - personal roll creation path
 - cloud lifecycle transitions
+- exposure-slot lifecycle after `start_roll()`
 - exposure loading
 - reveal/gallery loading
 

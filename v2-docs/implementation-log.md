@@ -1,5 +1,23 @@
 # V2 Implementation Log
 
+## Documentation Update – Phase 8 Local-First Shooting vs Phase 9 Upload/Sync
+
+- Clarified that Phase 8 is local-first personal-roll shooting only:
+  - start personal roll through the V2 cloud lifecycle
+  - fetch cloud-created exposure slots
+  - mirror them into the local exposure model
+  - capture locally into the next empty exposure
+  - persist local originals without uploading
+- Clarified that Phase 9 owns networked upload and sync responsibilities:
+  - JPEG upload copy generation
+  - Supabase Storage upload
+  - `complete_exposure()` RPC
+  - retry logic
+  - metadata-pending recovery
+- Recorded the architectural rule that captures must not block on network and Phase 8 must not directly perform uploads.
+- Documented that debug visibility for hidden photos is allowed only behind a development-only flag.
+- Reaffirmed that normal user-mode hidden-film behavior remains mandatory until reveal.
+
 ## Documentation Update – Roadmap and Authentication Strategy
 
 - Reordered the V2 implementation roadmap to reflect the approved sequence from Phase 0 through Phase 16.

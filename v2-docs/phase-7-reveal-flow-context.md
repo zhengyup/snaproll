@@ -24,6 +24,8 @@ A participant is `FINISHED` only when all of their exposures are synced to cloud
 
 A roll becomes `READY_TO_REVEAL` when all participants are finished.
 
+For the personal-roll roadmap, that means reveal depends on Phase 9 cloud sync completion, not just Phase 8 local capture completion.
+
 Reveal is a cloud event:
 
 ```text
@@ -71,6 +73,7 @@ Also refresh:
 ## Invariants That Must Not Be Violated
 
 - Roll readiness is based on synced cloud state, not just local capture state.
+- Local-only captured photos must remain hidden and non-revealable until Phase 9 sync advances the roll state in cloud.
 - Only the creator can reveal or force reveal.
 - Reveal must be a cloud-owned transition.
 - Force Reveal must include uploaded photos and discard only empty exposure slots.

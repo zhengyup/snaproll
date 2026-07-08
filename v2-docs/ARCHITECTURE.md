@@ -1197,29 +1197,82 @@ Cloud-backed personal rolls are user-scoped and visible through the V2 path.
 Implement:
 
 * Start and use a personal roll through the V2 cloud lifecycle
-* Create and fetch exposure slots
-* Connect V2 personal roll detail to the local exposure model
-* Preserve hidden-film behavior
+* Call `start_roll()` for personal rolls where appropriate
+* Fetch cloud-created exposure slots
+* Mirror exposure slots into the local exposure model
+* Show V2 personal roll detail
+* Show progress and remaining exposures
+* Capture into the next empty exposure
+* Save captured original locally
+* Mark local exposure as pending upload / `LOCAL_ONLY`
+* Preserve hidden-film behavior in normal user mode
+* Do not upload to Supabase Storage yet
+* Do not call `complete_exposure()` yet
+* Do not implement retry logic yet
 
 Deliverable:
 
 ```text
-V2 personal rolls enter shooting with cloud-backed exposure slots.
+V2 personal rolls enter SHOOTING with cloud-backed exposure slots, and captures are persisted locally into exposure slots without network upload.
 ```
+
+### Phase 8 Manual Testing Expectations
+
+After Phase 8, with V2 and development-auth flags enabled, the developer should be able to:
+
+1. Select a development identity.
+2. Create a V2 personal roll.
+3. Open the roll detail.
+4. Start the roll.
+5. Confirm exposures are created in Supabase.
+6. Confirm local exposure records are created.
+7. Capture one or more shots.
+8. Confirm progress or remaining exposure count updates.
+9. Confirm local exposure sync state becomes `LOCAL_ONLY` / pending upload.
+10. Confirm the app does not upload to Storage yet.
+11. Confirm hidden-film behavior remains preserved in normal mode.
+
+## Development Visibility for Hidden Photos
+
+Normal user mode must preserve Snaproll's promise that captured photos remain hidden until reveal.
+
+During development, V2 may include a debug-only visibility mode behind a development flag.
+
+Debug visibility may show:
+
+* exposure number
+* local sync state
+* local file path
+* whether the local original exists
+* optional thumbnail or preview of the captured local image
+* pending upload count
+
+This exists only to make local-first capture and later sync easier to verify.
+
+It must not be enabled in production mode.
+
+It must be easy to disable so user-mode hidden-film behavior can still be tested.
 
 ## Phase 9 — V2 Capture → Upload → Sync
 
 Implement:
 
-* Capture into next empty exposure
-* Save local original
-* Convert upload copy to JPEG
-* Upload to Storage
-* complete_exposure RPC
-* Local sync states
+* Sync engine processing for captured local exposures
+* JPEG upload copy generation
+* Upload to Supabase Storage
+* Canonical padded path: `rolls/{roll_id}/participants/{participant_id}/001.jpg`
+* `complete_exposure()` RPC
+* Local sync states:
+  * `EMPTY`
+  * `LOCAL_ONLY`
+  * `UPLOADING`
+  * `METADATA_PENDING`
+  * `SYNCED`
+  * `FAILED`
 * Retry logic
-* Metadata pending recovery
-* Simulator or debug capture support for end-to-end testing
+* Metadata-pending recovery
+* Simulator or debug capture support if not completed in Phase 8
+* Roll readiness updates after exposure completion
 
 Deliverable:
 
