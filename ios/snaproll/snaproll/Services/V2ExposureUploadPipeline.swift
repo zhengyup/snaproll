@@ -24,8 +24,13 @@ protocol ExposureUploadSyncing: Sendable {
     func uploadPendingExposures(forRollID rollID: UUID) async throws -> V2ExposureUploadSummary
 }
 
+protocol ExposureUploadStageSyncing: Sendable {
+    @MainActor
+    func processUploadStage(for exposure: LocalExposure, rollID: UUID) async throws
+}
+
 @MainActor
-final class V2ExposureUploadPipeline: ExposureUploadSyncing {
+final class V2ExposureUploadPipeline: ExposureUploadSyncing, ExposureUploadStageSyncing {
     private let exposureMirrorStore: any ExposureMirrorStore
     private let photoStorageService: PhotoStorageService
     private let storageRepository: any ExposureAssetStorageRepository
@@ -67,7 +72,7 @@ final class V2ExposureUploadPipeline: ExposureUploadSyncing {
         )
     }
 
-    private func upload(_ exposure: LocalExposure, forRollID rollID: UUID) async throws {
+    func processUploadStage(for exposure: LocalExposure, rollID: UUID) async throws {
         guard let localOriginalPath = exposure.local_original_path,
               photoStorageService.fileExists(at: localOriginalPath) else {
             throw V2ExposureUploadPipelineError.missingLocalOriginal
@@ -102,5 +107,9 @@ final class V2ExposureUploadPipeline: ExposureUploadSyncing {
         exposure.last_error = nil
         exposure.updated_at = uploadedAt
         try await exposureMirrorStore.saveExposure(exposure)
+    }
+
+    private func upload(_ exposure: LocalExposure, forRollID rollID: UUID) async throws {
+        try await processUploadStage(for: exposure, rollID: rollID)
     }
 }

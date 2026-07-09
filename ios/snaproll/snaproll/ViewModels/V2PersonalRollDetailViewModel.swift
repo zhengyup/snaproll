@@ -16,6 +16,9 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let rollStatus: V2Domain.RollStatus
         let capturedCount: Int
         let remainingCount: Int
+        let pendingCount: Int
+        let failedCount: Int
+        let isSynchronizing: Bool
     }
 
     struct DiagnosticsRow: Identifiable, Equatable {
@@ -30,14 +33,15 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let cloudStoragePath: String?
         let captureTimestamp: Date?
         let uploadedAt: Date?
+        let lastError: String?
     }
 
     @Published private(set) var state: V2PersonalRollDetailState = .idle
     @Published private(set) var roll: LocalRoll?
     @Published private(set) var mirroredExposures: [LocalExposure] = []
     @Published private(set) var isStartingRoll = false
-    @Published private(set) var isUploadingPendingExposures = false
-    @Published private(set) var lastUploadMessage: String?
+    @Published private(set) var isSynchronizing = false
+    @Published private(set) var lastSyncMessage: String?
 
     let rollID: UUID
 
@@ -45,7 +49,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     private let exposureRepository: any ExposureRepository
     private let exposureMirrorStore: any ExposureMirrorStore
     private let photoStorageService: PhotoStorageService
-    private let uploadPipeline: (any ExposureUploadSyncing)?
+    private let syncRunner: (any ExposureSyncRunning)?
     private let diagnosticsEnabled: Bool
     private let activeDevelopmentIdentityLabel: String?
 
@@ -55,7 +59,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         exposureRepository: any ExposureRepository,
         exposureMirrorStore: any ExposureMirrorStore,
         photoStorageService: PhotoStorageService? = nil,
-        uploadPipeline: (any ExposureUploadSyncing)? = nil,
+        syncRunner: (any ExposureSyncRunning)? = nil,
         diagnosticsEnabled: Bool? = nil,
         activeDevelopmentIdentityLabel: String? = nil
     ) {
@@ -64,7 +68,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         self.exposureRepository = exposureRepository
         self.exposureMirrorStore = exposureMirrorStore
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
-        self.uploadPipeline = uploadPipeline
+        self.syncRunner = syncRunner
         self.diagnosticsEnabled = diagnosticsEnabled ?? AppConfig.V2.isExposureDiagnosticsEnabled
         self.activeDevelopmentIdentityLabel = activeDevelopmentIdentityLabel
     }
@@ -127,7 +131,8 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
                 uploadJPEGPath: exposure.upload_jpeg_path,
                 cloudStoragePath: exposure.cloud_storage_path,
                 captureTimestamp: exposure.captured_at,
-                uploadedAt: exposure.uploaded_at
+                uploadedAt: exposure.uploaded_at,
+                lastError: exposure.last_error
             )
         }
     }
@@ -136,12 +141,61 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         diagnosticsEnabled
     }
 
-    var uploadableExposureCount: Int {
-        mirroredExposures.filter { $0.sync_state == .localOnly }.count
+    var pendingSyncExposureCount: Int {
+        mirroredExposures.filter { exposure in
+            switch exposure.sync_state {
+            case .localOnly, .uploading, .metadataPending:
+                return true
+            case .failed:
+                return true
+            case .empty, .synced:
+                return false
+            }
+        }.count
     }
 
-    var shouldShowUploadAction: Bool {
-        diagnosticsEnabled && uploadPipeline != nil && uploadableExposureCount > 0
+    var failedSyncExposureCount: Int {
+        mirroredExposures.filter { $0.sync_state == .failed }.count
+    }
+
+    var shouldShowProcessPendingAction: Bool {
+        diagnosticsEnabled && syncRunner != nil && pendingSyncExposureCount > 0
+    }
+
+    var shouldShowRetryFailedAction: Bool {
+        diagnosticsEnabled && syncRunner != nil && failedSyncExposureCount > 0
+    }
+
+    var shouldShowForceRefreshAction: Bool {
+        diagnosticsEnabled
+    }
+
+    var userFacingSyncStatus: String? {
+        if isSynchronizing {
+            return "Syncing…"
+        }
+
+        if roll?.status == .readyToReveal {
+            return "Ready to Reveal"
+        }
+
+        if failedSyncExposureCount > 0 {
+            return diagnosticsEnabled ? "Sync failed" : "Waiting for upload…"
+        }
+
+        if mirroredExposures.contains(where: { $0.sync_state == .metadataPending }) {
+            return "Syncing…"
+        }
+
+        if mirroredExposures.contains(where: { $0.sync_state == .uploading }) {
+            return "Uploading…"
+        }
+
+        if mirroredExposures.contains(where: { $0.sync_state == .localOnly }) {
+            return "Waiting for upload…"
+        }
+
+        return nil
     }
 
     var diagnosticsSummary: DiagnosticsSummary? {
@@ -154,7 +208,10 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
             rollID: roll.id,
             rollStatus: roll.status,
             capturedCount: capturedExposures,
-            remainingCount: remainingExposures
+            remainingCount: remainingExposures,
+            pendingCount: pendingSyncExposureCount,
+            failedCount: failedSyncExposureCount,
+            isSynchronizing: isSynchronizing
         )
     }
 
@@ -167,6 +224,20 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         } catch {
             state = .failed(error.localizedDescription)
         }
+    }
+
+    func handleAppear() async {
+        await load()
+        await synchronizeIfNeeded()
+    }
+
+    func handleCaptureSessionEnded() async {
+        await load()
+        await synchronizeIfNeeded()
+    }
+
+    func handleSceneBecameActive() async {
+        await synchronizeIfNeeded()
     }
 
     func startRoll() async {
@@ -186,27 +257,16 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         }
     }
 
-    func uploadPendingExposures() async {
-        guard let uploadPipeline, !isUploadingPendingExposures else {
-            return
-        }
+    func processPendingExposures() async {
+        await runSynchronization()
+    }
 
-        isUploadingPendingExposures = true
-        lastUploadMessage = nil
-        defer { isUploadingPendingExposures = false }
+    func retryFailedSynchronization() async {
+        await runSynchronization()
+    }
 
-        do {
-            let summary = try await uploadPipeline.uploadPendingExposures(forRollID: rollID)
-            try await reloadLocalMirror()
-
-            if summary.failedCount > 0 {
-                lastUploadMessage = "\(summary.uploadedCount) uploaded, \(summary.failedCount) failed"
-            } else {
-                lastUploadMessage = "\(summary.uploadedCount) exposure(s) uploaded"
-            }
-        } catch {
-            state = .failed(error.localizedDescription)
-        }
+    func forceRefresh() async {
+        await load()
     }
 
     private func reloadFromSources() async throws {
@@ -226,8 +286,36 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         mirroredExposures = mirrored.sorted(by: { $0.exposure_number < $1.exposure_number })
     }
 
-    private func reloadLocalMirror() async throws {
-        mirroredExposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
-            .sorted(by: { $0.exposure_number < $1.exposure_number })
+    private func synchronizeIfNeeded() async {
+        guard pendingSyncExposureCount > 0 else {
+            return
+        }
+
+        await runSynchronization()
+    }
+
+    private func runSynchronization() async {
+        guard let syncRunner, !isSynchronizing else {
+            return
+        }
+
+        isSynchronizing = true
+        lastSyncMessage = nil
+        defer { isSynchronizing = false }
+
+        do {
+            let summary = try await syncRunner.processPendingExposures(forRollID: rollID)
+            try await reloadFromSources()
+
+            if summary.processedCount == 0 {
+                lastSyncMessage = "No pending work"
+            } else if summary.failedCount > 0 {
+                lastSyncMessage = "\(summary.syncedCount) synced, \(summary.failedCount) failed"
+            } else {
+                lastSyncMessage = "\(summary.syncedCount) exposure(s) synced"
+            }
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
     }
 }

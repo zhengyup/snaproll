@@ -117,21 +117,24 @@ struct V2PersonalRollDetailViewModelTests {
     }
 
     @Test
-    func developmentDiagnosticsReflectMirroredExposureState() async {
+    func developmentDiagnosticsReflectMirroredExposureState() async throws {
         let rollID = UUID(uuidString: "DDDDDDDD-0000-0000-0000-000000000001")!
-        let cloudExposures = [
-            makeExposure(
-                id: UUID(uuidString: "DDDDDDDD-0000-0000-0000-000000000101")!,
-                rollID: rollID,
-                exposureNumber: 1,
-                renderSeed: "diag-seed"
-            )
-        ]
+        let pendingExposure = makeExposure(
+            id: UUID(uuidString: "DDDDDDDD-0000-0000-0000-000000000101")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            renderSeed: "diag-seed",
+            syncState: .localOnly
+        )
+        pendingExposure.local_original_path = "/tmp/test.jpg"
+
+        let mirrorStore = InMemoryExposureMirrorStore()
+        try await mirrorStore.saveExposure(pendingExposure)
         let viewModel = V2PersonalRollDetailViewModel(
             rollID: rollID,
             rollRepository: FakeDetailRollRepository(fetchRollResults: [.success(makeRoll(id: rollID, status: .shooting, exposures: 1))]),
-            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [.success(cloudExposures)]),
-            exposureMirrorStore: InMemoryExposureMirrorStore(),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [.success([makeExposure(id: pendingExposure.id, rollID: rollID, exposureNumber: 1, renderSeed: "diag-seed")])]),
+            exposureMirrorStore: mirrorStore,
             diagnosticsEnabled: true,
             activeDevelopmentIdentityLabel: "Creator"
         )
@@ -142,12 +145,14 @@ struct V2PersonalRollDetailViewModelTests {
         #expect(viewModel.diagnosticsSummary?.activeIdentityLabel == "Creator")
         #expect(viewModel.diagnosticsSummary?.rollID == rollID)
         #expect(viewModel.diagnosticsSummary?.rollStatus == .shooting)
-        #expect(viewModel.diagnosticsSummary?.capturedCount == 0)
-        #expect(viewModel.diagnosticsSummary?.remainingCount == 1)
+        #expect(viewModel.diagnosticsSummary?.capturedCount == 1)
+        #expect(viewModel.diagnosticsSummary?.remainingCount == 0)
+        #expect(viewModel.diagnosticsSummary?.pendingCount == 1)
         #expect(viewModel.diagnosticsRows.count == 1)
         #expect(viewModel.diagnosticsRows.first?.exposureNumber == 1)
-        #expect(viewModel.diagnosticsRows.first?.syncState == .empty)
+        #expect(viewModel.diagnosticsRows.first?.syncState == .localOnly)
         #expect(viewModel.diagnosticsRows.first?.renderSeed == "diag-seed")
+        #expect(viewModel.shouldShowProcessPendingAction == false)
     }
 
     @Test
@@ -168,6 +173,120 @@ struct V2PersonalRollDetailViewModelTests {
         #expect(viewModel.shouldShowDiagnostics == false)
         #expect(viewModel.diagnosticsSummary == nil)
         #expect(viewModel.diagnosticsRows.isEmpty)
+    }
+
+    @Test
+    func handleAppearStartsSynchronizationWhenPendingExposureExists() async throws {
+        let rollID = UUID(uuidString: "F1F1F1F1-0000-0000-0000-000000000001")!
+        let exposureID = UUID(uuidString: "F1F1F1F1-0000-0000-0000-000000000101")!
+        let pendingExposure = makeExposure(
+            id: exposureID,
+            rollID: rollID,
+            exposureNumber: 1,
+            renderSeed: "sync-seed",
+            syncState: .localOnly
+        )
+        pendingExposure.local_original_path = "/tmp/pending.jpg"
+
+        let mirrorStore = InMemoryExposureMirrorStore()
+        try await mirrorStore.saveExposure(pendingExposure)
+        let syncRunner = RecordingExposureSyncRunner()
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1)),
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1))
+            ]),
+            exposureRepository: FakeDetailExposureRepository(
+                fetchByRollResults: [
+                    .success([makeExposure(id: exposureID, rollID: rollID, exposureNumber: 1, renderSeed: "sync-seed")]),
+                    .success([makeExposure(id: exposureID, rollID: rollID, exposureNumber: 1, renderSeed: "sync-seed")])
+                ]
+            ),
+            exposureMirrorStore: mirrorStore,
+            syncRunner: syncRunner,
+            diagnosticsEnabled: true
+        )
+
+        await viewModel.handleAppear()
+
+        #expect(syncRunner.processedRollIDs == [rollID])
+        #expect(viewModel.lastSyncMessage == "1 exposure(s) synced")
+    }
+
+    @Test
+    func handleCaptureSessionEndedStartsSynchronizationWhenPendingExposureExists() async throws {
+        let rollID = UUID(uuidString: "F2F2F2F2-0000-0000-0000-000000000001")!
+        let exposureID = UUID(uuidString: "F2F2F2F2-0000-0000-0000-000000000101")!
+        let pendingExposure = makeExposure(
+            id: exposureID,
+            rollID: rollID,
+            exposureNumber: 1,
+            renderSeed: "capture-seed",
+            syncState: .localOnly
+        )
+        pendingExposure.local_original_path = "/tmp/pending.jpg"
+
+        let mirrorStore = InMemoryExposureMirrorStore()
+        try await mirrorStore.saveExposure(pendingExposure)
+        let syncRunner = RecordingExposureSyncRunner()
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1)),
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1))
+            ]),
+            exposureRepository: FakeDetailExposureRepository(
+                fetchByRollResults: [
+                    .success([makeExposure(id: exposureID, rollID: rollID, exposureNumber: 1, renderSeed: "capture-seed")]),
+                    .success([makeExposure(id: exposureID, rollID: rollID, exposureNumber: 1, renderSeed: "capture-seed")])
+                ]
+            ),
+            exposureMirrorStore: mirrorStore,
+            syncRunner: syncRunner,
+            diagnosticsEnabled: true
+        )
+
+        await viewModel.handleCaptureSessionEnded()
+
+        #expect(syncRunner.processedRollIDs == [rollID])
+        #expect(viewModel.lastSyncMessage == "1 exposure(s) synced")
+    }
+
+    @Test
+    func retryAndProcessActionsUseSameSyncRunner() async throws {
+        let rollID = UUID(uuidString: "F3F3F3F3-0000-0000-0000-000000000001")!
+        let failedExposure = makeExposure(
+            id: UUID(uuidString: "F3F3F3F3-0000-0000-0000-000000000101")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            renderSeed: "failed-seed",
+            syncState: .failed
+        )
+        failedExposure.local_original_path = "/tmp/failed.jpg"
+
+        let mirrorStore = InMemoryExposureMirrorStore()
+        try await mirrorStore.saveExposure(failedExposure)
+        let syncRunner = RecordingExposureSyncRunner()
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1)),
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1))
+            ]),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [
+                .success([makeExposure(id: failedExposure.id, rollID: rollID, exposureNumber: 1, renderSeed: "failed-seed")]),
+                .success([makeExposure(id: failedExposure.id, rollID: rollID, exposureNumber: 1, renderSeed: "failed-seed")])
+            ]),
+            exposureMirrorStore: mirrorStore,
+            syncRunner: syncRunner,
+            diagnosticsEnabled: true
+        )
+
+        await viewModel.processPendingExposures()
+        await viewModel.retryFailedSynchronization()
+
+        #expect(syncRunner.processedRollIDs == [rollID, rollID])
     }
 }
 
@@ -229,8 +348,32 @@ private actor FakeDetailExposureRepository: ExposureRepository {
 
     func fetchExposures(forParticipantID participantID: UUID) async throws -> [LocalExposure] { [] }
     func fetchExposure(id: UUID) async throws -> LocalExposure? { nil }
+    func completeExposure(id: UUID, storagePath: String) async throws -> CompleteExposureResult {
+        CompleteExposureResult(participantFinished: false, rollReadyToReveal: false)
+    }
     func saveExposure(_ exposure: LocalExposure) async throws {}
     func saveExposures(_ exposures: [LocalExposure]) async throws {}
+}
+
+@MainActor
+private final class RecordingExposureSyncRunner: ExposureSyncRunning {
+    private(set) var processedRollIDs: [UUID] = []
+    private let result: V2ExposureSyncRunSummary
+
+    init(
+        result: V2ExposureSyncRunSummary = V2ExposureSyncRunSummary(
+            processedExposureIDs: [UUID()],
+            syncedExposureIDs: [UUID()],
+            failedExposureIDs: []
+        )
+    ) {
+        self.result = result
+    }
+
+    func processPendingExposures(forRollID rollID: UUID) async throws -> V2ExposureSyncRunSummary {
+        processedRollIDs.append(rollID)
+        return result
+    }
 }
 
 @MainActor
@@ -242,7 +385,30 @@ private final class InMemoryExposureMirrorStore: ExposureMirrorStore {
     }
 
     func mirrorCloudExposures(_ exposures: [LocalExposure], forRollID rollID: UUID) async throws -> [LocalExposure] {
-        let merged = exposures.sorted { $0.exposure_number < $1.exposure_number }
+        let existingByID = Dictionary(uniqueKeysWithValues: (exposuresByRollID[rollID] ?? []).map { ($0.id, $0) })
+        let merged = exposures.map { exposure in
+            guard let existing = existingByID[exposure.id] else {
+                return exposure
+            }
+
+            let cloudHasUploadedAsset = exposure.cloud_storage_path != nil
+            return LocalExposure(
+                id: exposure.id,
+                roll_id: exposure.roll_id,
+                participant_id: exposure.participant_id,
+                exposure_number: exposure.exposure_number,
+                render_seed: exposure.render_seed,
+                local_original_path: existing.local_original_path,
+                upload_jpeg_path: existing.upload_jpeg_path,
+                cloud_storage_path: exposure.cloud_storage_path ?? existing.cloud_storage_path,
+                rendered_cache_path: existing.rendered_cache_path,
+                sync_state: cloudHasUploadedAsset ? .synced : existing.sync_state,
+                captured_at: existing.captured_at ?? exposure.captured_at,
+                uploaded_at: exposure.uploaded_at ?? existing.uploaded_at,
+                last_error: cloudHasUploadedAsset ? nil : existing.last_error,
+                updated_at: max(existing.updated_at, exposure.updated_at)
+            )
+        }.sorted { $0.exposure_number < $1.exposure_number }
         exposuresByRollID[rollID] = merged
         return merged
     }
@@ -278,16 +444,20 @@ private func makeRoll(
 private func makeExposure(
     id: UUID,
     rollID: UUID,
+    participantID: UUID = UUID(uuidString: "99999999-9999-9999-9999-999999999999")!,
     exposureNumber: Int,
-    renderSeed: String
+    renderSeed: String,
+    storagePath: String? = nil,
+    syncState: V2Domain.ExposureSyncState = .empty
 ) -> LocalExposure {
     LocalExposure(
         id: id,
         roll_id: rollID,
-        participant_id: UUID(uuidString: "99999999-9999-9999-9999-999999999999")!,
+        participant_id: participantID,
         exposure_number: exposureNumber,
         render_seed: renderSeed,
-        sync_state: .empty,
+        cloud_storage_path: storagePath,
+        sync_state: syncState,
         updated_at: .now
     )
 }

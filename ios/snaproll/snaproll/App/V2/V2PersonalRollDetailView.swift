@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct V2PersonalRollDetailView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: V2PersonalRollDetailViewModel
     @State private var isShowingCaptureView = false
     private let dependencies: V2DependencyContainer
@@ -11,6 +12,20 @@ struct V2PersonalRollDetailView: View {
         developmentIdentity: DevelopmentAuthIdentity? = nil
     ) {
         self.dependencies = dependencies
+        let uploadPipeline = V2ExposureUploadPipeline(
+            exposureMirrorStore: dependencies.exposureMirrorStore,
+            photoStorageService: dependencies.photoStorageService,
+            storageRepository: dependencies.exposureAssetStorageRepository
+        )
+        let metadataPipeline = V2ExposureMetadataCompletionPipeline(
+            exposureMirrorStore: dependencies.exposureMirrorStore,
+            exposureRepository: dependencies.exposureRepository
+        )
+        let syncRunner = V2ExposureSyncRunner(
+            exposureMirrorStore: dependencies.exposureMirrorStore,
+            uploadStage: uploadPipeline,
+            metadataStage: metadataPipeline
+        )
         _viewModel = StateObject(
             wrappedValue: V2PersonalRollDetailViewModel(
                 rollID: rollID,
@@ -18,11 +33,7 @@ struct V2PersonalRollDetailView: View {
                 exposureRepository: dependencies.exposureRepository,
                 exposureMirrorStore: dependencies.exposureMirrorStore,
                 photoStorageService: dependencies.photoStorageService,
-                uploadPipeline: V2ExposureUploadPipeline(
-                    exposureMirrorStore: dependencies.exposureMirrorStore,
-                    photoStorageService: dependencies.photoStorageService,
-                    storageRepository: dependencies.exposureAssetStorageRepository
-                ),
+                syncRunner: syncRunner,
                 activeDevelopmentIdentityLabel: developmentIdentity?.displayName
             )
         )
@@ -59,17 +70,21 @@ struct V2PersonalRollDetailView: View {
                     roll: roll,
                     dependencies: dependencies,
                     onCaptureCompleted: {
-                        await viewModel.load()
+                        await viewModel.handleCaptureSessionEnded()
                     }
                 )
             }
         }
         .task {
-            await viewModel.load()
+            await viewModel.handleAppear()
         }
-        .onAppear {
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else {
+                return
+            }
+
             Task {
-                await viewModel.load()
+                await viewModel.handleSceneBecameActive()
             }
         }
     }
@@ -87,6 +102,12 @@ struct V2PersonalRollDetailView: View {
             Text(viewModel.statusLabel)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.6))
+
+            if let syncStatus = viewModel.userFacingSyncStatus {
+                Text(syncStatus)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.78))
+            }
 
             if viewModel.shouldShowStartRoll {
                 Button {
@@ -165,18 +186,18 @@ struct V2PersonalRollDetailView: View {
                 .font(.headline)
                 .foregroundStyle(.white.opacity(0.95))
 
-            if viewModel.shouldShowUploadAction {
+            if viewModel.shouldShowProcessPendingAction {
                 Button {
                     Task {
-                        await viewModel.uploadPendingExposures()
+                        await viewModel.processPendingExposures()
                     }
                 } label: {
-                    if viewModel.isUploadingPendingExposures {
+                    if viewModel.isSynchronizing {
                         ProgressView()
                             .tint(.black)
                             .frame(maxWidth: .infinity)
                     } else {
-                        Text("Upload Pending Exposures")
+                        Text("Process Pending Exposures")
                             .fontWeight(.semibold)
                             .frame(maxWidth: .infinity)
                     }
@@ -188,11 +209,56 @@ struct V2PersonalRollDetailView: View {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
                 )
-                .disabled(viewModel.isUploadingPendingExposures)
+                .disabled(viewModel.isSynchronizing)
             }
 
-            if let lastUploadMessage = viewModel.lastUploadMessage {
-                Text(lastUploadMessage)
+            if viewModel.shouldShowRetryFailedAction {
+                Button {
+                    Task {
+                        await viewModel.retryFailedSynchronization()
+                    }
+                } label: {
+                    if viewModel.isSynchronizing {
+                        ProgressView()
+                            .tint(.black)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Retry Failed Sync")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.92))
+                )
+                .disabled(viewModel.isSynchronizing)
+            }
+
+            if viewModel.shouldShowForceRefreshAction {
+                Button {
+                    Task {
+                        await viewModel.forceRefresh()
+                    }
+                } label: {
+                    Text("Force Refresh")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.black.opacity(0.18))
+                )
+            }
+
+            if let lastSyncMessage = viewModel.lastSyncMessage {
+                Text(lastSyncMessage)
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.72))
             }
@@ -210,6 +276,9 @@ struct V2PersonalRollDetailView: View {
                     )
                     diagnosticsSummaryLine(title: "Captured", value: "\(summary.capturedCount)")
                     diagnosticsSummaryLine(title: "Remaining", value: "\(summary.remainingCount)")
+                    diagnosticsSummaryLine(title: "Pending", value: "\(summary.pendingCount)")
+                    diagnosticsSummaryLine(title: "Failed", value: "\(summary.failedCount)")
+                    diagnosticsSummaryLine(title: "Synchronizing", value: summary.isSynchronizing ? "Yes" : "No")
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -275,6 +344,12 @@ struct V2PersonalRollDetailView: View {
                             Text(uploadedAt.formatted(date: .abbreviated, time: .standard))
                                 .font(.caption2)
                                 .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        if let lastError = row.lastError {
+                            Text(lastError)
+                                .font(.caption2)
+                                .foregroundStyle(.red.opacity(0.82))
                         }
 
                         Text(row.id.uuidString)

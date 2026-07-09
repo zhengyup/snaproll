@@ -35,6 +35,8 @@ EOF
 .derivedData-ios-test/
 .deriveddata-tests/
 .deriveddata-tests-phase9a/
+.deriveddata-tests-phase9b/
+.deriveddata-phase9b-build/
 
 # image testing 
 film-references/

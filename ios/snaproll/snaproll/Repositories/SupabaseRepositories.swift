@@ -161,6 +161,16 @@ private struct RollIDRPCRequest: Encodable {
     let p_roll_id: UUID
 }
 
+private struct CompleteExposureRPCRequest: Encodable {
+    let p_exposure_id: UUID
+    let p_storage_path: String
+}
+
+private struct CompleteExposureRPCResponse: Decodable {
+    let participant_finished: Bool
+    let roll_ready_to_reveal: Bool
+}
+
 private struct ProfileDisplayNameRecord: Decodable {
     let display_name: String?
 }
@@ -534,6 +544,27 @@ final class SupabaseExposureRepository: ExposureRepository, @unchecked Sendable,
                 .value
 
             return rows.first?.toLocalExposure()
+        }
+    }
+
+    func completeExposure(id: UUID, storagePath: String) async throws -> CompleteExposureResult {
+        try await withClient(operation: "exposure.completeExposure") { client in
+            let response: CompleteExposureRPCResponse = try await client
+                .rpc(
+                    "complete_exposure",
+                    params: CompleteExposureRPCRequest(
+                        p_exposure_id: id,
+                        p_storage_path: storagePath
+                    )
+                )
+                .single()
+                .execute()
+                .value
+
+            return CompleteExposureResult(
+                participantFinished: response.participant_finished,
+                rollReadyToReveal: response.roll_ready_to_reveal
+            )
         }
     }
 

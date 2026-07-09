@@ -59,6 +59,9 @@ struct V2CaptureView: View {
         }
         .onDisappear {
             viewModel.handleDisappear()
+            Task {
+                await onCaptureCompleted()
+            }
         }
     }
 
@@ -132,7 +135,7 @@ struct V2CaptureView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Local-only sample")
                                     .font(.title3.weight(.semibold))
-                                Text("No upload. No sync.")
+                                Text("Sync starts after you return to the roll.")
                                     .font(.footnote)
                             }
                             .foregroundStyle(.white)
@@ -179,7 +182,6 @@ struct V2CaptureView: View {
         Button {
             Task {
                 await viewModel.capture()
-                await onCaptureCompleted()
             }
         } label: {
             if viewModel.isCapturing {

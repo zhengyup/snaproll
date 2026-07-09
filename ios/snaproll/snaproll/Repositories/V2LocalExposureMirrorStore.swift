@@ -171,10 +171,11 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
         let participantID = exposure.participant_id
         let exposureNumber = exposure.exposure_number
         let renderSeed = exposure.render_seed
-        let cloudStoragePath = exposure.cloud_storage_path
+        let cloudStoragePath = exposure.cloud_storage_path ?? existing?.cloudStoragePath
         let capturedAt = existing?.capturedAt ?? exposure.captured_at
         let uploadedAt = exposure.uploaded_at ?? existing?.uploadedAt
         let updatedAt = max(existing?.updatedAt ?? exposure.updated_at, exposure.updated_at)
+        let lastError = cloudHasUploadedAsset ? nil : existing?.lastError
 
         return LocalExposureSnapshot(
             id: id,
@@ -189,7 +190,7 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
             syncState: mergedSyncState,
             capturedAt: capturedAt,
             uploadedAt: uploadedAt,
-            lastError: existing?.lastError,
+            lastError: lastError,
             updatedAt: updatedAt
         )
     }

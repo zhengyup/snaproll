@@ -15,6 +15,11 @@ struct JoinRollResult: Sendable {
     let participantID: UUID
 }
 
+struct CompleteExposureResult: Sendable, Equatable {
+    let participantFinished: Bool
+    let rollReadyToReveal: Bool
+}
+
 protocol AuthRepository: Sendable {
     func currentSession() async throws -> AuthSession?
     func currentUserID() async throws -> UUID?
@@ -50,6 +55,7 @@ protocol ExposureRepository: Sendable {
     func fetchExposures(forRollID rollID: UUID) async throws -> [LocalExposure]
     func fetchExposures(forParticipantID participantID: UUID) async throws -> [LocalExposure]
     func fetchExposure(id: UUID) async throws -> LocalExposure?
+    func completeExposure(id: UUID, storagePath: String) async throws -> CompleteExposureResult
     func saveExposure(_ exposure: LocalExposure) async throws
     func saveExposures(_ exposures: [LocalExposure]) async throws
 }

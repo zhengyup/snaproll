@@ -1,5 +1,275 @@
 # V2 Implementation Log
 
+## Phase 9C – V2 Automatic Sync Runner, Retry & Recovery
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2CaptureView.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+
+Repositories:
+
+- `ios/snaproll/snaproll/Repositories/V2LocalExposureMirrorStore.swift`
+
+Services:
+
+- `ios/snaproll/snaproll/Services/V2ExposureMetadataCompletionPipeline.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureSyncRunner.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureUploadPipeline.swift`
+
+View models:
+
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2ExposureSyncRunnerTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRollDetailViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### Automatic sync runner
+
+- Added `V2ExposureSyncRunner` as the single orchestration layer for post-capture synchronization.
+- The runner processes mirrored exposures sequentially in exposure-number order.
+- It owns the full local sync progression:
+
+```text
+LOCAL_ONLY
+→ upload JPEG to Storage
+→ METADATA_PENDING
+→ complete_exposure(...)
+→ SYNCED
+```
+
+- The camera no longer kicks off upload/metadata work directly.
+- The V2 personal roll detail flow now triggers the same runner when:
+  - the roll detail first appears
+  - the user returns from `V2CaptureView`
+  - the app becomes active again while the roll detail is open
+
+### Retry and recovery behavior
+
+- Retry is now state-aware:
+  - `LOCAL_ONLY` / `UPLOADING`
+    - rerun upload, then metadata completion
+  - `METADATA_PENDING`
+    - rerun metadata completion only
+  - `FAILED` with `cloud_storage_path`
+    - skip upload and retry metadata only
+  - `FAILED` without `cloud_storage_path`
+    - restart from upload
+- Failures no longer stop the whole queue.
+- The runner marks failed exposures with:
+  - `sync_state = FAILED`
+  - `last_error`
+- Fixed the local mirror merge logic so restart recovery preserves locally known:
+  - `cloud_storage_path`
+  - `uploaded_at`
+  - pending error context
+- This closes the earlier recovery gap where a successfully uploaded file could survive app restart while the local mirror forgot that upload had already happened.
+
+### V2 UI / diagnostics changes
+
+- Replaced the old manual debug actions:
+  - `Upload Pending Exposures`
+  - `Complete Pending Metadata`
+- Added runner-backed development actions:
+  - `Process Pending Exposures`
+  - `Retry Failed Sync`
+  - `Force Refresh`
+- All three development actions now route through the same Phase 9C orchestration path.
+- Normal mode now surfaces only lightweight sync messaging such as:
+  - `Uploading…`
+  - `Syncing…`
+  - `Waiting for upload…`
+  - `Ready to Reveal`
+- The capture screen now waits until the user leaves the camera flow before invoking the roll-detail sync callback.
+
+### Manual validation expectations
+
+With V2 enabled:
+
+1. Create and start a V2 personal roll.
+2. Capture one or more exposures.
+3. Return from the capture screen.
+4. Confirm the roll detail begins syncing automatically.
+5. Confirm development diagnostics update exposure states from:
+   - `LOCAL_ONLY`
+   - to `METADATA_PENDING`
+   - to `SYNCED`
+6. Kill and relaunch the app with an exposure mid-sync.
+7. Reopen the roll and confirm the runner resumes from the persisted local state instead of starting over incorrectly.
+8. In development mode, use:
+   - `Retry Failed Sync`
+   - `Process Pending Exposures`
+   - `Force Refresh`
+   and confirm they all drive the same queue.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase9c-build CODE_SIGNING_ALLOWED=NO build
+```
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase9c CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+### Test command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase9c CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2ExposureUploadPipelineTests -only-testing:snaprollTests/V2ExposureMetadataCompletionPipelineTests -only-testing:snaprollTests/V2ExposureSyncRunnerTests -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests -only-testing:snaprollTests/V2LocalCapturePipelineTests test-without-building
+```
+
+### Results
+
+- full iOS build succeeded
+- focused Phase 9 sync/capture/detail tests passed
+- automatic sync now compiles and is covered by dedicated retry/recovery tests
+
+### Assumptions / follow-up work
+
+- This phase still runs sync when the roll detail is foregrounded, not as a background task or long-lived daemon.
+- Upload progress is represented at the exposure-state level, not as byte-level progress.
+- Background scheduling, polling, and broader offline hardening remain future work.
+
+## Phase 9B – V2 Metadata Completion with `complete_exposure()`
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+
+Repositories:
+
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+
+Services:
+
+- `ios/snaproll/snaproll/Services/V2ExposureMetadataCompletionPipeline.swift`
+
+View models:
+
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2ExposureMetadataCompletionPipelineTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRollDetailViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### `complete_exposure()` integration
+
+- Added a dedicated second-half sync service:
+  - `V2ExposureMetadataCompletionPipeline`
+- The metadata completion pipeline is separate from upload and only processes mirrored exposures with:
+  - `sync_state = METADATA_PENDING`
+  - non-empty `cloud_storage_path`
+- Added repository support for the backend-owned transition:
+  - `ExposureRepository.completeExposure(id:storagePath:)`
+  - live implementation calls the approved `complete_exposure` RPC
+- This phase does not:
+  - re-upload images
+  - generate a new upload JPEG
+  - delete Storage objects on failure
+
+### Local state transitions
+
+- Successful metadata completion path:
+
+```text
+METADATA_PENDING
+→ complete_exposure(...)
+→ SYNCED
+```
+
+- On success, the mirrored exposure keeps:
+  - `cloud_storage_path`
+  - `uploaded_at`
+  - `upload_jpeg_path`
+- On success, the mirrored exposure updates:
+  - `sync_state = SYNCED`
+  - `last_error = nil`
+  - `updated_at`
+
+- On metadata completion failure:
+  - the uploaded Storage object is left untouched
+  - the mirrored exposure remains retryable in:
+    - `METADATA_PENDING`
+  - the mirrored exposure records:
+    - `last_error`
+    - updated timestamp
+
+### Backend refresh behavior
+
+- After metadata completion runs from the V2 personal roll detail screen, the view model reloads:
+  - roll metadata from `RollRepository.fetchRoll(id:)`
+  - cloud exposures from `ExposureRepository.fetchExposures(forRollID:)`
+  - the mirrored local exposure state via `ExposureMirrorStore.mirrorCloudExposures(...)`
+- This lets the UI reflect backend-owned lifecycle changes such as:
+  - participant finishing
+  - roll moving to `READY_TO_REVEAL`
+- Development diagnostics now surface:
+  - metadata completion action
+  - metadata completion result message
+  - `last_error` when metadata completion fails
+
+### Manual validation performed
+
+- Verified build-for-testing succeeds with the new Phase 9B code path.
+- Verified the previously failing metadata-failure path test passes when run after build-for-testing using `test-without-building`.
+- The broader focused Phase 9 test group had already passed except for that single failure-path test before the final fixture correction.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase9b-build CODE_SIGNING_ALLOWED=NO build
+```
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase9b CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+### Test commands executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase9b CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2ExposureUploadPipelineTests -only-testing:snaprollTests/V2ExposureMetadataCompletionPipelineTests -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests test
+```
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase9b CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests/metadataCompletionFailurePreservesMetadataPendingState test-without-building
+```
+
+### Results
+
+- full iOS build succeeded
+- build-for-testing succeeded
+- new metadata completion pipeline compiles cleanly
+- the focused Phase 9 test suite initially exposed a failure-path fixture bug in the V2 personal roll detail test
+- after correcting that fixture to match the real backend failure shape (`storage_path` remains null when `complete_exposure()` fails), the targeted failure-path test passed with `test-without-building`
+
+### Assumptions / follow-up work
+
+- Phase 9B assumes:
+  - the upload phase has already written the canonical Storage object
+  - `cloud_storage_path` is already present locally
+- This phase still does not add:
+  - retry scheduler / background worker
+  - app restart recovery
+  - reveal UI
+  - shared-roll sync behavior
+- A later hardening phase should unify upload + metadata completion under a more explicit sync orchestrator once retry / recovery / polling are added.
+
 ## Phase 9A Follow-Up – Storage Bucket & Policies
 
 - Added migration:
