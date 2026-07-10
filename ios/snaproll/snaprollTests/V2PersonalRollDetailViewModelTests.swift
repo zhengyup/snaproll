@@ -176,6 +176,69 @@ struct V2PersonalRollDetailViewModelTests {
     }
 
     @Test
+    func revealIsOnlyAvailableWhenRollIsReadyToReveal() async {
+        let readyRollID = UUID(uuidString: "EFEFEFEF-0000-0000-0000-000000000001")!
+        let revealedRollID = UUID(uuidString: "EFEFEFEF-0000-0000-0000-000000000002")!
+
+        let readyViewModel = V2PersonalRollDetailViewModel(
+            rollID: readyRollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [.success(makeRoll(id: readyRollID, status: .readyToReveal, exposures: 1))]),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [.success([])]),
+            exposureMirrorStore: InMemoryExposureMirrorStore(),
+            diagnosticsEnabled: true
+        )
+        let revealedViewModel = V2PersonalRollDetailViewModel(
+            rollID: revealedRollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [.success(makeRoll(id: revealedRollID, status: .revealed, exposures: 1))]),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [.success([])]),
+            exposureMirrorStore: InMemoryExposureMirrorStore(),
+            diagnosticsEnabled: true
+        )
+
+        await readyViewModel.load()
+        await revealedViewModel.load()
+
+        #expect(readyViewModel.shouldShowRevealAction)
+        #expect(readyViewModel.shouldShowViewGalleryAction == false)
+        #expect(revealedViewModel.shouldShowRevealAction == false)
+        #expect(revealedViewModel.shouldShowViewGalleryAction)
+    }
+
+    @Test
+    func revealInvokesRepositoryAndRefreshesRollState() async {
+        let rollID = UUID(uuidString: "ABABABAB-0000-0000-0000-000000000001")!
+        let rollRepository = FakeDetailRollRepository(fetchRollResults: [
+            .success(makeRoll(id: rollID, status: .readyToReveal, exposures: 1)),
+            .success(makeRoll(id: rollID, status: .revealed, exposures: 1))
+        ])
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: rollRepository,
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [
+                .success([
+                    makeExposure(
+                        id: UUID(uuidString: "ABABABAB-0000-0000-0000-000000000101")!,
+                        rollID: rollID,
+                        exposureNumber: 1,
+                        renderSeed: "seed-1",
+                        storagePath: "rolls/abababab-0000-0000-0000-000000000001/participants/99999999-9999-9999-9999-999999999999/001.jpg",
+                        syncState: .synced
+                    )
+                ])
+            ]),
+            exposureMirrorStore: InMemoryExposureMirrorStore(),
+            diagnosticsEnabled: true
+        )
+
+        await viewModel.load()
+        let didReveal = await viewModel.revealRoll()
+
+        #expect(didReveal)
+        #expect(await rollRepository.revealedRollIDs == [rollID])
+        #expect(viewModel.roll?.status == .revealed)
+    }
+
+    @Test
     func handleAppearStartsSynchronizationWhenPendingExposureExists() async throws {
         let rollID = UUID(uuidString: "F1F1F1F1-0000-0000-0000-000000000001")!
         let exposureID = UUID(uuidString: "F1F1F1F1-0000-0000-0000-000000000101")!
@@ -293,6 +356,7 @@ struct V2PersonalRollDetailViewModelTests {
 private actor FakeDetailRollRepository: RollRepository {
     private var fetchRollResults: [Result<LocalRoll?, Error>]
     private(set) var startedRollIDs: [UUID] = []
+    private(set) var revealedRollIDs: [UUID] = []
 
     init(fetchRollResults: [Result<LocalRoll?, Error>]) {
         self.fetchRollResults = fetchRollResults
@@ -312,6 +376,10 @@ private actor FakeDetailRollRepository: RollRepository {
 
     func startRoll(id: UUID) async throws {
         startedRollIDs.append(id)
+    }
+
+    func revealRoll(id: UUID) async throws {
+        revealedRollIDs.append(id)
     }
 
     func createRoll(

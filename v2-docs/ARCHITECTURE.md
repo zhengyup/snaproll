@@ -1267,7 +1267,7 @@ Implement:
   * `LOCAL_ONLY`
   * `UPLOADING`
   * `METADATA_PENDING`
-  * `SYNCED`
+  * `SYNC
   * `FAILED`
 * Retry logic
 * Metadata-pending recovery

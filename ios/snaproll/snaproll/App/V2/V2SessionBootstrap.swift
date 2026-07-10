@@ -154,7 +154,7 @@ struct V2BootstrapEntryView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if AppConfig.V2.isDevelopmentAuthenticationEnabled, !isShowingCloudHome {
+            if AppConfig.V2.showsDevelopmentIdentityControls, !isShowingCloudHome {
                 V2DevelopmentIdentityBadge(state: sessionStore.state)
                     .padding(.top, 16)
                     .padding(.trailing, 16)

@@ -1,5 +1,10 @@
 import Foundation
 
+enum V2ExperienceMode {
+    case developer
+    case user
+}
+
 enum AppConfig {
     enum Rolls {
         // Development testing shortcut for renderer tuning. Restore this to 24 before release.
@@ -25,15 +30,36 @@ enum AppConfig {
         static let storageBucketName = "snaproll-originals"
 
         #if DEBUG
+        // Change only this value to switch between a developer-facing V2 experience and a user-facing one.
+        static let experienceMode: V2ExperienceMode = .developer
         // Development-only auth path for building shared-roll features without Apple or Google sign-in.
         static let isDevelopmentAuthenticationEnabled = true
         static let developmentIdentity: DevelopmentAuthIdentity = .creator
-        static let isExposureDiagnosticsEnabled = true
         #else
+        static let experienceMode: V2ExperienceMode = .user
         static let isDevelopmentAuthenticationEnabled = false
         static let developmentIdentity: DevelopmentAuthIdentity = .creator
-        static let isExposureDiagnosticsEnabled = false
         #endif
+
+        static var showsDeveloperUI: Bool {
+            #if DEBUG
+            return experienceMode == .developer
+            #else
+            return false
+            #endif
+        }
+
+        static var isExposureDiagnosticsEnabled: Bool {
+            showsDeveloperUI
+        }
+
+        static var showsDevelopmentIdentityControls: Bool {
+            showsDeveloperUI
+        }
+
+        static var navigationTitle: String {
+            showsDeveloperUI ? "V2 Cloud Rolls" : "My Rolls"
+        }
 
         static var authenticationMode: V2AuthenticationMode {
             #if DEBUG

@@ -1,9 +1,14 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct V2CloudHomeView: View {
     @ObservedObject var sessionStore: V2SessionStore
     @ObservedObject var developmentAuthSettings: DevelopmentAuthSettings
     @StateObject private var viewModel: V2CloudHomeViewModel
+    @State private var isShowingCopyToast = false
+    @State private var copyToastTask: Task<Void, Never>?
 
     init(
         sessionStore: V2SessionStore,
@@ -16,7 +21,8 @@ struct V2CloudHomeView: View {
         _viewModel = StateObject(
             wrappedValue: V2CloudHomeViewModel(
                 authRepository: dependencies.authRepository,
-                rollRepository: dependencies.rollRepository
+                rollRepository: dependencies.rollRepository,
+                participantRepository: dependencies.participantRepository
             )
         )
     }
@@ -27,22 +33,57 @@ struct V2CloudHomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    V2CloudIdentityPanel(
-                        session: viewModel.currentSession,
-                        selectedIdentity: developmentAuthSettings.selectedIdentity,
-                        isSwitchingIdentity: sessionStore.state == .loading,
-                        onIdentitySelected: handleIdentitySelection
-                    )
+                    if AppConfig.V2.showsDevelopmentIdentityControls {
+                        V2CloudIdentityPanel(
+                            session: viewModel.currentSession,
+                            selectedIdentity: developmentAuthSettings.selectedIdentity,
+                            isSwitchingIdentity: sessionStore.state == .loading,
+                            onIdentitySelected: handleIdentitySelection
+                        )
+                    }
 
                     V2CloudCreateRollPanel(
                         draftTitle: $viewModel.draftTitle,
+                        selectedCreationType: $viewModel.selectedCreationType,
                         isCreating: viewModel.isCreatingRoll,
                         onCreate: {
                             Task {
-                                await viewModel.createPersonalRoll()
+                                await viewModel.createRoll()
                             }
                         }
                     )
+
+                    if let inviteToken = viewModel.lastCreatedSharedInviteToken {
+                        V2CloudInviteTokenPanel(
+                            rollTitle: viewModel.lastCreatedSharedRollTitle ?? "Shared Roll",
+                            inviteToken: inviteToken,
+                            onCopy: {
+                                handleInviteCopy(inviteToken)
+                            }
+                        )
+                    }
+
+                    V2CloudJoinRollPanel(
+                        inviteToken: $viewModel.joinInviteToken,
+                        isJoining: viewModel.isJoiningRoll,
+                        onJoin: {
+                            Task {
+                                await viewModel.joinSharedRoll()
+                            }
+                        }
+                    )
+
+                    if let actionErrorMessage = viewModel.actionErrorMessage {
+                        V2CloudStatusCard(
+                            title: "Action failed",
+                            message: actionErrorMessage
+                        )
+                    } else if let actionStatusMessage = viewModel.actionStatusMessage {
+                        V2CloudStatusCard(
+                            title: "Updated",
+                            message: actionStatusMessage
+                        )
+                    }
 
                     V2CloudRollListSection(
                         state: viewModel.state,
@@ -69,7 +110,7 @@ struct V2CloudHomeView: View {
                 )
                 .ignoresSafeArea()
             )
-            .navigationTitle("V2 Cloud Rolls")
+            .navigationTitle(AppConfig.V2.navigationTitle)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Refresh") {
@@ -78,6 +119,13 @@ struct V2CloudHomeView: View {
                         }
                     }
                     .disabled(sessionStore.state == .loading)
+                }
+            }
+            .overlay(alignment: .top) {
+                if isShowingCopyToast {
+                    V2CopyFeedbackView(message: "Link copied")
+                        .padding(.top, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
         }
@@ -90,6 +138,9 @@ struct V2CloudHomeView: View {
             }
 
             await viewModel.load()
+        }
+        .onDisappear {
+            copyToastTask?.cancel()
         }
     }
 
@@ -105,6 +156,36 @@ struct V2CloudHomeView: View {
         Task {
             await developmentAuthSettings.selectIdentity(identity)
             await sessionStore.retry()
+        }
+    }
+
+    private func handleInviteCopy(_ inviteToken: String) {
+        #if os(iOS)
+        UIPasteboard.general.string = inviteToken
+        #endif
+
+        guard !isShowingCopyToast else {
+            return
+        }
+
+        withAnimation(.easeOut(duration: 0.18)) {
+            isShowingCopyToast = true
+        }
+
+        copyToastTask?.cancel()
+        copyToastTask = Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await MainActor.run {
+                withAnimation(.easeIn(duration: 0.18)) {
+                    isShowingCopyToast = false
+                }
+                copyToastTask = nil
+            }
         }
     }
 }
@@ -175,14 +256,21 @@ private struct V2CloudIdentityPanel: View {
 
 private struct V2CloudCreateRollPanel: View {
     @Binding var draftTitle: String
+    @Binding var selectedCreationType: V2Domain.RollType
     let isCreating: Bool
     let onCreate: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Create Personal Roll")
+            Text("Create Roll")
                 .font(.headline)
                 .foregroundStyle(.white.opacity(0.95))
+
+            Picker("Roll Type", selection: $selectedCreationType) {
+                Text("Personal").tag(V2Domain.RollType.personal)
+                Text("Shared").tag(V2Domain.RollType.shared)
+            }
+            .pickerStyle(.segmented)
 
             TextField("Untitled Roll", text: $draftTitle)
                 .textInputAutocapitalization(.words)
@@ -203,7 +291,7 @@ private struct V2CloudCreateRollPanel: View {
                         .tint(.black)
                         .frame(maxWidth: .infinity)
                 } else {
-                    Text("Create Cloud Roll")
+                    Text(buttonTitle)
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                 }
@@ -217,7 +305,133 @@ private struct V2CloudCreateRollPanel: View {
             )
             .disabled(isCreating)
 
-            Text("Creates a PERSONAL roll through the V2 Supabase RPC path with 12 exposures and a single participant.")
+            Text(helperText)
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.58))
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.white.opacity(0.08))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        }
+    }
+
+    private var helperText: String {
+        if selectedCreationType == .shared {
+            return "Creates a SHARED roll through the V2 Supabase RPC path. The creator becomes the first participant and receives an active invite token."
+        }
+
+        if AppConfig.V2.showsDeveloperUI {
+            return "Creates a PERSONAL roll through the V2 Supabase RPC path with 12 exposures and a single participant."
+        }
+
+        return "Create a new roll to begin capturing intentionally."
+    }
+
+    private var buttonTitle: String {
+        selectedCreationType == .shared ? "Create Shared Roll" : "Create Cloud Roll"
+    }
+}
+
+private struct V2CloudInviteTokenPanel: View {
+    let rollTitle: String
+    let inviteToken: String
+    let onCopy: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Shared Lobby Ready")
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.95))
+
+            Text("Invite for \(rollTitle)")
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.65))
+
+            Button(action: onCopy) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(inviteToken)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text("Tap to copy")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.58))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.black.opacity(0.16))
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.white.opacity(0.08))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        }
+    }
+}
+
+private struct V2CloudJoinRollPanel: View {
+    @Binding var inviteToken: String
+    let isJoining: Bool
+    let onJoin: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Join Shared Roll")
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.95))
+
+            TextField("Paste invite token", text: $inviteToken)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.white.opacity(0.08))
+                )
+                .foregroundStyle(.white)
+
+            Button {
+                onJoin()
+            } label: {
+                if isJoining {
+                    ProgressView()
+                        .tint(.black)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Text("Join Shared Roll")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.black)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.92))
+            )
+            .disabled(isJoining)
+
+            Text("Use the invite token from the shared lobby creator to join with the current development identity.")
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.58))
         }
@@ -262,7 +476,7 @@ private struct V2CloudRollListSection: View {
             case .empty:
                 V2CloudStatusCard(
                     title: "No personal rolls yet",
-                    message: "Create one above, then switch identities to verify user-scoped cloud visibility."
+                    message: emptyStateMessage
                 )
             case .failed(let message):
                 VStack(alignment: .leading, spacing: 10) {
@@ -278,11 +492,19 @@ private struct V2CloudRollListSection: View {
                 VStack(spacing: 12) {
                     ForEach(rolls, id: \.id) { roll in
                         NavigationLink {
-                            V2PersonalRollDetailView(
-                                rollID: roll.id,
-                                dependencies: dependencies,
-                                developmentIdentity: selectedIdentity
-                            )
+                            if roll.type == .shared {
+                                V2SharedRollLobbyView(
+                                    rollID: roll.id,
+                                    developmentIdentity: selectedIdentity,
+                                    dependencies: dependencies
+                                )
+                            } else {
+                                V2PersonalRollDetailView(
+                                    rollID: roll.id,
+                                    dependencies: dependencies,
+                                    developmentIdentity: selectedIdentity
+                                )
+                            }
                         } label: {
                             V2CloudRollCard(roll: roll)
                         }
@@ -301,6 +523,14 @@ private struct V2CloudRollListSection: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(.white.opacity(0.12), lineWidth: 1)
         }
+    }
+
+    private var emptyStateMessage: String {
+        if AppConfig.V2.showsDeveloperUI {
+            return "Create one above, then switch identities to verify user-scoped cloud visibility."
+        }
+
+        return "Create your first roll to start building your memories."
     }
 }
 
@@ -349,7 +579,7 @@ private struct V2CloudRollCard: View {
                 .foregroundStyle(.white.opacity(0.72))
 
             HStack {
-                Text(statusLabel)
+                Text("\(roll.type.rawValue.capitalized) · \(statusLabel)")
                 Spacer()
                 Text("\(roll.exposures_per_participant) exp")
             }

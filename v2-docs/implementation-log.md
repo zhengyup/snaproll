@@ -1,5 +1,235 @@
 # V2 Implementation Log
 
+## Phase 11A – V2 Shared Roll Creation + Joinable Lobby
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2CloudHomeView.swift`
+- `ios/snaproll/snaproll/App/V2/V2SharedRollLobbyView.swift`
+
+View models:
+
+- `ios/snaproll/snaproll/ViewModels/V2CloudHomeViewModel.swift`
+- `ios/snaproll/snaproll/ViewModels/V2SharedRollLobbyViewModel.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2CloudHomeViewModelTests.swift`
+- `ios/snaproll/snaprollTests/V2SharedRollLobbyViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### Shared roll creation flow
+
+- Extended the V2 cloud home creation surface to support both:
+  - `PERSONAL`
+  - `SHARED`
+- Shared roll creation now calls the existing `create_roll()` RPC through `RollRepository.createRoll(...)` with:
+  - `type = SHARED`
+  - `film_stock_id = kodakGold200`
+  - `exposures_per_participant = 12`
+  - `participant_cap = 10`
+- The client does not create participant rows or invites directly.
+- After creation:
+  - the shared roll is reloaded from Supabase through the normal roll list
+  - the returned invite token is stored in the home view model and displayed in a developer-facing card
+
+### Lobby implementation
+
+- Added a dedicated V2 shared lobby screen:
+  - `V2SharedRollLobbyView`
+- Added a lobby view model that loads:
+  - current session
+  - roll metadata
+  - backend participant list
+  - active invite when the current user is the creator
+- Shared rolls now route to the lobby from the V2 cloud roll list.
+- Personal rolls continue to route to the existing personal-roll detail flow unchanged.
+
+### Invite token display / join flow
+
+- Added a minimal join panel on the V2 cloud home:
+  - text field for invite token
+  - `Join Shared Roll` action
+- Joining uses `ParticipantRepository.joinRoll(...)`, which calls the existing `join_roll()` RPC.
+- After a successful join:
+  - the token field is cleared
+  - the roll list is refreshed from Supabase
+  - the joined shared roll becomes visible to the current development identity
+- The shared lobby shows the invite token only for the creator.
+- Non-creators still see the same lobby and participant list, but not the invite token.
+
+### Manual validation
+
+With V2 enabled:
+
+1. Launch app.
+2. Select `Creator`.
+3. Create a shared roll from the V2 cloud home.
+4. Confirm it appears with `WAITING_FOR_PARTICIPANTS`.
+5. Open the shared lobby and confirm the creator appears in the participant list.
+6. Copy the invite token from either the shared-roll creation card or the creator lobby.
+7. Switch to `Participant A`.
+8. Paste the token into the join panel and join.
+9. Confirm the shared roll becomes visible in Participant A’s cloud roll list.
+10. Open the shared lobby as Participant A and confirm the participant list loads from Supabase.
+11. Switch back to `Creator`, refresh, and confirm Participant A now appears in the lobby.
+12. Confirm no exposure slots exist yet because Start Roll is not implemented in this phase.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase11a-build CODE_SIGNING_ALLOWED=NO build
+```
+
+### Test command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase11a CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2CloudHomeViewModelTests -only-testing:snaprollTests/V2SharedRollLobbyViewModelTests test
+```
+
+### Results
+
+- full iOS build succeeded
+- focused shared-lobby / cloud-home tests passed
+- personal-roll V2 flow remains intact and still routes through the previous detail screens
+
+### Assumptions / follow-up work
+
+- This phase intentionally stops before `start_roll()`.
+- Lobby refresh is manual for now; polling can be layered in later without changing the repository boundaries.
+- Invite token sharing is intentionally simple and developer-oriented in this phase.
+- Participant removal, leaving, delete roll, and regenerate invite remain later shared-roll management work.
+
+## Phase 10 – V2 Personal Reveal & Gallery
+
+### Files changed
+
+App / V2 flow:
+
+- `ios/snaproll/snaproll/App/V2/V2PersonalRevealGalleryView.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+
+Repositories:
+
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+
+View models:
+
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRevealGalleryViewModel.swift`
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+
+Tests:
+
+- `ios/snaproll/snaprollTests/V2CloudHomeViewModelTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRevealGalleryViewModelTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRollDetailViewModelTests.swift`
+
+Documentation:
+
+- `v2-docs/implementation-log.md`
+
+### Reveal flow
+
+- Added `RollRepository.revealRoll(id:)` and live Supabase support via the `reveal_roll` RPC.
+- Reveal availability is now driven by the backend-owned roll status:
+  - `READY_TO_REVEAL` shows `Reveal Roll`
+  - `REVEALED` shows `View Gallery`
+- The V2 personal roll detail view model now:
+  - invokes `reveal_roll()`
+  - reloads roll metadata from Supabase
+  - confirms the roll becomes `REVEALED`
+- The client does not mutate reveal state locally.
+
+### Gallery implementation
+
+- Added a dedicated V2 personal reveal gallery screen:
+  - `V2PersonalRevealGalleryView`
+- Added a gallery view model that:
+  - fetches the latest roll metadata
+  - fetches roll exposures from Supabase
+  - mirrors those exposures into the local exposure store
+  - renders the gallery in `exposure_number` order
+- The gallery remains intentionally minimal for this phase:
+  - rendered image
+  - exposure number
+  - roll title
+  - film stock
+
+### Rendering pipeline integration
+
+- Rendering stays entirely on-device.
+- The gallery uses:
+  - local original image
+  - film stock
+  - render seed
+- The renderer is now called through a small abstraction so Phase 10 tests can verify the actual inputs.
+- Local originals are preferred over upload artifacts:
+  - `local_original_path` is used when present
+  - `upload_jpeg_path` is not used for primary reveal rendering
+- If rendering fails:
+  - the original local image is preserved for display
+  - a development diagnostic is surfaced
+  - rendering can be retried by reloading the gallery
+
+### Development diagnostics
+
+- In development mode, the gallery can show:
+  - render seed
+  - sync state
+  - rendering source
+  - local-original availability
+  - render duration
+  - local original path
+- These diagnostics remain hidden outside development mode.
+
+### Manual validation expectations
+
+With V2 enabled:
+
+1. Create and start a V2 personal roll.
+2. Capture and sync every exposure.
+3. Confirm the backend roll reaches `READY_TO_REVEAL`.
+4. Open the roll detail and press `Reveal Roll`.
+5. Confirm the backend row becomes `REVEALED`.
+6. Confirm the V2 gallery opens.
+7. Confirm the displayed order matches `exposure_number`.
+8. Confirm the gallery renders from local originals rather than upload copies.
+9. If development diagnostics are enabled, confirm render seed and source metadata are visible.
+
+### Build command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase10-build CODE_SIGNING_ALLOWED=NO build
+```
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase10 CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+### Test command executed
+
+```text
+xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase10 CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests -only-testing:snaprollTests/V2PersonalRevealGalleryViewModelTests -only-testing:snaprollTests/V2ExposureSyncRunnerTests -only-testing:snaprollTests/V2ExposureUploadPipelineTests -only-testing:snaprollTests/V2ExposureMetadataCompletionPipelineTests -only-testing:snaprollTests/V2LocalCapturePipelineTests test-without-building
+```
+
+### Results
+
+- full iOS build succeeded
+- focused Phase 10 reveal/gallery tests passed
+- existing dependent Phase 9 sync/capture tests still passed
+
+### Assumptions / follow-up work
+
+- This phase does not add cloud download fallback for missing originals.
+- The gallery is intentionally simple and not yet the final production gallery design.
+- Shared reveal/gallery remains a later phase and should reuse this local-first render path.
+
 ## Phase 9C – V2 Automatic Sync Runner, Retry & Recovery
 
 ### Files changed

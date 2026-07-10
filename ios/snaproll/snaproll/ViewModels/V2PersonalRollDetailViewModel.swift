@@ -40,6 +40,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     @Published private(set) var roll: LocalRoll?
     @Published private(set) var mirroredExposures: [LocalExposure] = []
     @Published private(set) var isStartingRoll = false
+    @Published private(set) var isRevealingRoll = false
     @Published private(set) var isSynchronizing = false
     @Published private(set) var lastSyncMessage: String?
 
@@ -112,6 +113,14 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
 
     var shouldShowCaptureAction: Bool {
         roll?.status == .shooting && remainingExposures > 0
+    }
+
+    var shouldShowRevealAction: Bool {
+        roll?.status == .readyToReveal
+    }
+
+    var shouldShowViewGalleryAction: Bool {
+        roll?.status == .revealed
     }
 
     var diagnosticsRows: [DiagnosticsRow] {
@@ -254,6 +263,26 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
             state = .loaded
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    @discardableResult
+    func revealRoll() async -> Bool {
+        guard shouldShowRevealAction, !isRevealingRoll else {
+            return false
+        }
+
+        isRevealingRoll = true
+        defer { isRevealingRoll = false }
+
+        do {
+            try await rollRepository.revealRoll(id: rollID)
+            try await reloadFromSources()
+            state = .loaded
+            return roll?.status == .revealed
+        } catch {
+            state = .failed(error.localizedDescription)
+            return false
         }
     }
 

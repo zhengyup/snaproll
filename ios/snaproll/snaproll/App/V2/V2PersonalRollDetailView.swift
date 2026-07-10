@@ -4,6 +4,7 @@ struct V2PersonalRollDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: V2PersonalRollDetailViewModel
     @State private var isShowingCaptureView = false
+    @State private var isShowingGalleryView = false
     private let dependencies: V2DependencyContainer
 
     init(
@@ -75,6 +76,12 @@ struct V2PersonalRollDetailView: View {
                 )
             }
         }
+        .navigationDestination(isPresented: $isShowingGalleryView) {
+            V2PersonalRevealGalleryView(
+                rollID: viewModel.rollID,
+                dependencies: dependencies
+            )
+        }
         .task {
             await viewModel.handleAppear()
         }
@@ -140,6 +147,52 @@ struct V2PersonalRollDetailView: View {
                     isShowingCaptureView = true
                 } label: {
                     Text("Capture Next Exposure")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.92))
+                )
+            }
+
+            if viewModel.shouldShowRevealAction {
+                Button {
+                    Task {
+                        let didReveal = await viewModel.revealRoll()
+                        if didReveal {
+                            isShowingGalleryView = true
+                        }
+                    }
+                } label: {
+                    if viewModel.isRevealingRoll {
+                        ProgressView()
+                            .tint(.black)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Reveal Roll")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+                )
+                .disabled(viewModel.isRevealingRoll)
+            }
+
+            if viewModel.shouldShowViewGalleryAction {
+                Button {
+                    isShowingGalleryView = true
+                } label: {
+                    Text("View Gallery")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                 }

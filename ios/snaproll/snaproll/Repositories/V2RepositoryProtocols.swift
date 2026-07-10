@@ -31,6 +31,7 @@ protocol RollRepository: Sendable {
     func fetchRolls() async throws -> [LocalRoll]
     func fetchAllRolls() async throws -> [LocalRoll]
     func startRoll(id: UUID) async throws
+    func revealRoll(id: UUID) async throws
     func createRoll(
         title: String,
         type: V2Domain.RollType,
