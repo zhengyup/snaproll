@@ -1834,3 +1834,188 @@ Supporting V2 domain types:
 - For this phase, `AuthRepository.currentSession()` is the bootstrap boundary that both detects an auth session and fetches the current profile-backed session information.
 - A dedicated V2 sign-in UI and explicit profile-creation/repair flow are deferred to later auth phases.
 - Because the feature flag remains off by default, no V1 user-visible behavior changes in normal app usage.
+
+## Phase 11B – Shared Lobby Management & Start Roll
+
+### Files changed
+
+- `supabase/migrations/20260710033000_phase_11b_remove_participant_rpc.sql`
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/ViewModels/V2SharedRollLobbyViewModel.swift`
+- `ios/snaproll/snaproll/App/V2/V2SharedRollLobbyView.swift`
+- `ios/snaproll/snaprollTests/V2SharedRollLobbyViewModelTests.swift`
+
+### Lobby management
+
+- Added a dedicated `remove_participant(uuid)` RPC so shared-lobby participant removal remains backend-owned and lifecycle-validated.
+- Wired `SupabaseParticipantRepository.deleteParticipant(id:)` to the new RPC instead of leaving participant removal as an unsupported placeholder.
+- Extended the V2 shared lobby view model with creator/participant management actions:
+  - remove participant
+  - leave roll
+  - regenerate invite
+  - start roll
+- Added explicit action status/error messaging so backend lifecycle violations surface cleanly in the development lobby UI.
+
+### Start roll flow
+
+- The creator can now start a shared roll only while the roll remains in `WAITING_FOR_PARTICIPANTS`.
+- `V2SharedRollLobbyViewModel.startRoll()` calls `RollRepository.startRoll(...)`, then reloads the authoritative roll/participant state from Supabase.
+- Once the roll transitions to `SHOOTING`, the lobby switches into a locked state and hides creator/participant mutation controls.
+
+### Immutable lobby behaviour
+
+- Lobby mutating controls are now derived from backend lifecycle state:
+  - `canStartRoll`
+  - `canRegenerateInvite`
+  - `canLeaveRoll`
+  - `canRemoveParticipant(...)`
+- After `SHOOTING`, the UI removes join-management affordances and instead shows a locked-lobby message plus the exposure plan summary.
+
+### Exposure slot generation and local mirroring
+
+- After a successful shared `start_roll()`, the lobby fetches the current participant's cloud-created exposures through `ExposureRepository.fetchExposures(forParticipantID:)`.
+- The returned exposures are mirrored into the existing local exposure mirror store, matching the personal-roll approach and proving that shared rolls now have an authoritative backend-created shooting plan.
+- This phase intentionally stops at mirroring; it does not implement shared capture, upload, or reveal yet.
+
+### Tests added
+
+- Added focused shared-lobby view-model coverage for:
+  - creator can remove participant
+  - participant can leave
+  - creator cannot leave own roll
+  - regenerate invite refreshes invite state
+  - start roll fetches/mirrors current participant exposures
+  - lobby actions become unavailable after `SHOOTING`
+  - backend lifecycle errors surface clearly
+
+### Manual validation
+
+- Launch with V2 enabled and a development identity selected.
+- Create a shared roll as the creator and open the shared lobby.
+- Join from another development identity.
+- Remove and rejoin participants from the creator view.
+- Regenerate the invite and confirm the new token is shown.
+- Start the roll and confirm:
+  - roll status changes to `SHOOTING`
+  - creator/participant mutation controls disappear
+  - exposure rows are created in Supabase
+  - current-participant exposure mirrors appear locally in the lobby diagnostics
+
+### Build and test commands
+
+- Test:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase11b CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2SharedRollLobbyViewModelTests -only-testing:snaprollTests/V2CloudHomeViewModelTests test`
+- Build:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase11b CODE_SIGNING_ALLOWED=NO build`
+
+### Results
+
+- Focused V2 cloud-home and shared-lobby tests passed.
+- Full iOS project build passed.
+- Existing warnings remain around deprecated camera orientation APIs and one pre-existing actor-isolation warning in `V2SupabaseConfiguration`, but they did not block this phase.
+
+### Assumptions / follow-up
+
+- Shared-lobby joining from the home surface remains Phase 11A behavior; this phase only completes the pre-start lobby management and start-roll transition.
+- The new `remove_participant` RPC assumes creator-owned moderation only and intentionally rejects removal after the roll starts.
+- Shared capture, upload/sync, reveal, and participant gallery flows remain future work.
+
+## Phase 12 – V2 Shared Capture, Sync, Reveal & Gallery
+
+### Files changed
+
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/Services/V2LocalCapturePipeline.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureSyncRunner.swift`
+- `ios/snaproll/snaproll/ViewModels/V2CaptureViewModel.swift`
+- `ios/snaproll/snaproll/App/V2/V2CaptureView.swift`
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRevealGalleryViewModel.swift`
+- `ios/snaproll/snaproll/ViewModels/V2SharedRevealGalleryViewModel.swift`
+- `ios/snaproll/snaproll/App/V2/V2SharedRevealGalleryView.swift`
+- `ios/snaproll/snaproll/App/V2/V2CloudHomeView.swift`
+- `ios/snaproll/snaproll/App/V2/V2SharedRollLobbyView.swift`
+- `ios/snaproll/snaprollTests/V2LocalCapturePipelineTests.swift`
+- `ios/snaproll/snaprollTests/V2ExposureSyncRunnerTests.swift`
+- `ios/snaproll/snaprollTests/V2PersonalRollDetailViewModelTests.swift`
+- `ios/snaproll/snaprollTests/V2SharedRevealGalleryViewModelTests.swift`
+- `ios/snaproll/snaprollTests/V2ExposureUploadPipelineTests.swift`
+
+### Shared execution flow
+
+- Shared rolls now reuse the existing V2 personal-roll execution path rather than introducing a second capture/sync architecture.
+- The active shared-roll flow is now:
+  - creator starts the shared roll in the lobby
+  - the app routes into the existing V2 roll detail surface once the roll is no longer waiting
+  - the current participant captures only their own mirrored exposures
+  - sync uploads and metadata completion operate only on the current participant's exposures
+  - reveal remains backend-authoritative and becomes available only when the roll reaches `READY_TO_REVEAL`
+  - revealed shared rolls open a grouped shared gallery
+
+### Code reuse from the personal pipeline
+
+- `V2LocalCapturePipeline` was extended with optional participant scoping so shared capture still uses the same local-first exposure filling logic.
+- `V2ExposureSyncRunner` was extended with optional participant scoping so the same upload + metadata pipeline can process only the current participant's work in shared rolls.
+- `V2PersonalRollDetailViewModel` and `V2PersonalRollDetailView` were expanded to understand shared-roll state, participant ownership, creator-only reveal permissions, and shared participant progress while continuing to serve personal rolls.
+- `V2CaptureViewModel` and `V2CaptureView` now accept an optional participant context so the same capture UI can be reused for both personal and shared flows.
+
+### Participant ownership
+
+- Shared execution now loads the current authenticated session plus the roll's participant list.
+- During shared shooting/ready/revealed states, the roll detail view fetches and mirrors only the current participant's exposure slots.
+- Capture fills only the next empty exposure for the current participant.
+- Sync processes only the current participant's pending exposures.
+- Shared participant progress is displayed from the backend participant list rather than inferred from local capture state alone.
+
+### Shared gallery
+
+- Added `V2SharedRevealGalleryViewModel` and `V2SharedRevealGalleryView`.
+- Shared galleries are grouped by participant in joined order.
+- Exposures are sorted within each participant group by `exposure_number`.
+- Rendering continues to use the existing on-device renderer and render seed logic.
+- Rendering now prefers:
+  - local original image first
+  - downloaded cloud JPEG second
+- To support shared galleries on devices that did not capture a given photo, `ExposureAssetStorageRepository` now supports downloading the uploaded JPEG from Supabase Storage.
+
+### Navigation updates
+
+- The cloud home surface now routes shared rolls to:
+  - the shared lobby while the roll is `WAITING_FOR_PARTICIPANTS`
+  - the shared execution/detail flow once the roll has started
+- The shared lobby now exposes a "Continue Roll" / "Open Gallery" path after the lobby becomes immutable, so the creator can move straight from start into execution without backing out first.
+
+### Manual validation
+
+- With V2 enabled and multiple development identities:
+  - create a shared roll
+  - join from additional identities
+  - start the roll
+  - confirm each identity only sees its own capture progress and capture UI
+  - capture through each participant
+  - trigger sync and confirm only the current participant's exposures upload/complete on that device
+  - confirm the roll reaches `READY_TO_REVEAL` only after all participants finish
+  - reveal as the creator
+  - confirm all identities can load the grouped shared gallery
+  - confirm same-device captures use local originals while other participants fall back to cloud JPEG downloads
+
+### Build and test commands
+
+- Focused tests:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-tests-phase12 CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2LocalCapturePipelineTests -only-testing:snaprollTests/V2ExposureSyncRunnerTests -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests -only-testing:snaprollTests/V2SharedRollLobbyViewModelTests -only-testing:snaprollTests/V2SharedRevealGalleryViewModelTests test`
+- Full build:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase12 CODE_SIGNING_ALLOWED=NO build`
+
+### Results
+
+- Focused shared execution / gallery / participant-scoped pipeline tests passed.
+- Full iOS project build passed.
+- Pre-existing warnings remain around deprecated camera orientation APIs and one actor-isolation warning in `V2SupabaseConfiguration`, but they did not block this phase.
+
+### Assumptions
+
+- The repository did not contain the exact `phase-12-shared-roll-execution-context.md` filename referenced in the task prompt, so implementation followed `v2-docs/ARCHITECTURE.md` plus the current Phase 11/Phase 8/Phase 9 V2 code paths as the authoritative execution baseline.
+- Shared reveal remains creator-only, matching the shared-roll lifecycle defined in the architecture.
+- Cloud download fallback is used only for revealed shared-gallery viewing, not for capture or sync.

@@ -158,6 +158,10 @@ private actor RecordingExposureAssetStorageRepository: ExposureAssetStorageRepos
 
         uploadedPaths.append(storagePath)
     }
+
+    func downloadJPEG(from storagePath: String) async throws -> Data {
+        Data()
+    }
 }
 
 private func makeUploadExposure(

@@ -14,6 +14,8 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let activeIdentityLabel: String?
         let rollID: UUID
         let rollStatus: V2Domain.RollStatus
+        let isSharedRoll: Bool
+        let currentParticipantID: UUID?
         let capturedCount: Int
         let remainingCount: Int
         let pendingCount: Int
@@ -36,8 +38,19 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let lastError: String?
     }
 
+    struct ParticipantProgressRow: Identifiable, Equatable {
+        let id: UUID
+        let userID: UUID
+        let displayName: String
+        let status: V2Domain.ParticipantStatus
+        let isCurrentUser: Bool
+        let isCreator: Bool
+    }
+
     @Published private(set) var state: V2PersonalRollDetailState = .idle
     @Published private(set) var roll: LocalRoll?
+    @Published private(set) var currentSession: AuthSession?
+    @Published private(set) var participants: [LocalParticipant] = []
     @Published private(set) var mirroredExposures: [LocalExposure] = []
     @Published private(set) var isStartingRoll = false
     @Published private(set) var isRevealingRoll = false
@@ -47,6 +60,8 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     let rollID: UUID
 
     private let rollRepository: any RollRepository
+    private let authRepository: (any AuthRepository)?
+    private let participantRepository: (any ParticipantRepository)?
     private let exposureRepository: any ExposureRepository
     private let exposureMirrorStore: any ExposureMirrorStore
     private let photoStorageService: PhotoStorageService
@@ -57,6 +72,8 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     init(
         rollID: UUID,
         rollRepository: any RollRepository,
+        authRepository: (any AuthRepository)? = nil,
+        participantRepository: (any ParticipantRepository)? = nil,
         exposureRepository: any ExposureRepository,
         exposureMirrorStore: any ExposureMirrorStore,
         photoStorageService: PhotoStorageService? = nil,
@@ -66,6 +83,8 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     ) {
         self.rollID = rollID
         self.rollRepository = rollRepository
+        self.authRepository = authRepository
+        self.participantRepository = participantRepository
         self.exposureRepository = exposureRepository
         self.exposureMirrorStore = exposureMirrorStore
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
@@ -84,6 +103,30 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
 
     var statusLabel: String {
         roll?.status.rawValue.replacingOccurrences(of: "_", with: " ") ?? "Loading"
+    }
+
+    var isSharedRoll: Bool {
+        roll?.type == .shared
+    }
+
+    var currentParticipant: LocalParticipant? {
+        guard let currentUserID = currentSession?.userID else {
+            return nil
+        }
+
+        return participants.first(where: { $0.user_id == currentUserID })
+    }
+
+    var isCreator: Bool {
+        guard let roll, let currentUserID = currentSession?.userID else {
+            return false
+        }
+
+        return roll.creator_id == currentUserID
+    }
+
+    var currentParticipantDisplayName: String? {
+        currentParticipant?.display_name ?? currentSession?.displayName
     }
 
     var totalExposures: Int {
@@ -116,11 +159,65 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     }
 
     var shouldShowRevealAction: Bool {
-        roll?.status == .readyToReveal
+        guard roll?.status == .readyToReveal else {
+            return false
+        }
+
+        if isSharedRoll {
+            return isCreator
+        }
+
+        return true
     }
 
     var shouldShowViewGalleryAction: Bool {
         roll?.status == .revealed
+    }
+
+    var sharedReadyMessage: String? {
+        guard isSharedRoll else {
+            return nil
+        }
+
+        if roll?.status == .readyToReveal, !isCreator {
+            return "Waiting for the creator to reveal the finished roll."
+        }
+
+        if roll?.status == .shooting, let currentParticipant, currentParticipant.status == .finished {
+            return "Your exposures are complete. Waiting for the remaining participants."
+        }
+
+        return nil
+    }
+
+    var shouldShowParticipantProgress: Bool {
+        isSharedRoll && !participants.isEmpty
+    }
+
+    var participantProgressRows: [ParticipantProgressRow] {
+        guard let currentUserID = currentSession?.userID, let roll else {
+            return participants.map { participant in
+                ParticipantProgressRow(
+                    id: participant.id,
+                    userID: participant.user_id,
+                    displayName: participant.display_name ?? "Participant",
+                    status: participant.status,
+                    isCurrentUser: false,
+                    isCreator: false
+                )
+            }
+        }
+
+        return participants.map { participant in
+            ParticipantProgressRow(
+                id: participant.id,
+                userID: participant.user_id,
+                displayName: participant.display_name ?? "Participant",
+                status: participant.status,
+                isCurrentUser: participant.user_id == currentUserID,
+                isCreator: participant.user_id == roll.creator_id
+            )
+        }
     }
 
     var diagnosticsRows: [DiagnosticsRow] {
@@ -216,6 +313,8 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
             activeIdentityLabel: activeDevelopmentIdentityLabel,
             rollID: roll.id,
             rollStatus: roll.status,
+            isSharedRoll: roll.type == .shared,
+            currentParticipantID: currentParticipant?.id,
             capturedCount: capturedExposures,
             remainingCount: remainingExposures,
             pendingCount: pendingSyncExposureCount,
@@ -303,15 +402,32 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
             throw V2RepositoryError.notFound("The selected roll could not be found.")
         }
 
+        let fetchedSession = try await authRepository?.currentSession()
+        let fetchedParticipants: [LocalParticipant]
+        if fetchedRoll.type == .shared, let participantRepository {
+            fetchedParticipants = try await participantRepository.fetchParticipants(forRollID: rollID)
+        } else {
+            fetchedParticipants = []
+        }
+
         let mirrored: [LocalExposure]
         if fetchedRoll.status == .shooting || fetchedRoll.status == .readyToReveal || fetchedRoll.status == .revealed {
-            let cloudExposures = try await exposureRepository.fetchExposures(forRollID: rollID)
+            let cloudExposures: [LocalExposure]
+            if fetchedRoll.type == .shared,
+               let currentUserID = fetchedSession?.userID,
+               let currentParticipant = fetchedParticipants.first(where: { $0.user_id == currentUserID }) {
+                cloudExposures = try await exposureRepository.fetchExposures(forParticipantID: currentParticipant.id)
+            } else {
+                cloudExposures = try await exposureRepository.fetchExposures(forRollID: rollID)
+            }
             mirrored = try await exposureMirrorStore.mirrorCloudExposures(cloudExposures, forRollID: rollID)
         } else {
             mirrored = []
         }
 
         roll = fetchedRoll
+        currentSession = fetchedSession
+        participants = fetchedParticipants
         mirroredExposures = mirrored.sorted(by: { $0.exposure_number < $1.exposure_number })
     }
 
@@ -333,7 +449,10 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         defer { isSynchronizing = false }
 
         do {
-            let summary = try await syncRunner.processPendingExposures(forRollID: rollID)
+            let summary = try await syncRunner.processPendingExposures(
+                forRollID: rollID,
+                participantID: isSharedRoll ? currentParticipant?.id : nil
+            )
             try await reloadFromSources()
 
             if summary.processedCount == 0 {

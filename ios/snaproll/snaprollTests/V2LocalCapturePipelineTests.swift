@@ -114,6 +114,53 @@ struct V2LocalCapturePipelineTests {
         }
         #expect(await provider.captureCallCount == 1)
     }
+
+    @Test
+    func sharedCaptureOnlyFillsCurrentParticipantExposure() async throws {
+        let rollID = UUID(uuidString: "50505050-0000-0000-0000-000000000001")!
+        let currentParticipantID = UUID(uuidString: "50505050-0000-0000-0000-0000000000A1")!
+        let otherParticipantID = UUID(uuidString: "50505050-0000-0000-0000-0000000000B2")!
+
+        let currentExposure = LocalExposure(
+            id: UUID(),
+            roll_id: rollID,
+            participant_id: currentParticipantID,
+            exposure_number: 1,
+            render_seed: "current-seed",
+            sync_state: .empty,
+            updated_at: .now
+        )
+        let otherExposure = LocalExposure(
+            id: UUID(),
+            roll_id: rollID,
+            participant_id: otherParticipantID,
+            exposure_number: 1,
+            render_seed: "other-seed",
+            sync_state: .empty,
+            updated_at: .now
+        )
+
+        let store = CaptureMirrorStore(initialExposures: [rollID: [otherExposure, currentExposure]])
+        let pipeline = V2LocalCapturePipeline(
+            exposureMirrorStore: store,
+            photoStorageService: PhotoStorageService()
+        )
+
+        let result = try await pipeline.captureNextExposure(
+            forRollID: rollID,
+            participantID: currentParticipantID,
+            using: FakeImageSourceProvider(data: samplePNGData(), fileExtension: "png")
+        )
+        let updated = try await store.fetchExposures(forRollID: rollID)
+        let updatedCurrent = updated.first(where: { $0.participant_id == currentParticipantID })
+        let updatedOther = updated.first(where: { $0.participant_id == otherParticipantID })
+
+        #expect(result.exposureNumber == 1)
+        #expect(updatedCurrent?.sync_state == .localOnly)
+        #expect(updatedCurrent?.local_original_path != nil)
+        #expect(updatedOther?.sync_state == .empty)
+        #expect(updatedOther?.local_original_path == nil)
+    }
 }
 
 @MainActor

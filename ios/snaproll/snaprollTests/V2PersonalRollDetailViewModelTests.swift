@@ -351,6 +351,89 @@ struct V2PersonalRollDetailViewModelTests {
 
         #expect(syncRunner.processedRollIDs == [rollID, rollID])
     }
+
+    @Test
+    func sharedRollLoadsOnlyCurrentParticipantExposureSlots() async {
+        let rollID = UUID(uuidString: "12121212-0000-0000-0000-000000000001")!
+        let creatorUserID = UUID(uuidString: "12121212-0000-0000-0000-0000000000A1")!
+        let creatorParticipantID = UUID(uuidString: "12121212-0000-0000-0000-0000000000B2")!
+        let otherParticipantID = UUID(uuidString: "12121212-0000-0000-0000-0000000000C3")!
+        let currentExposure = makeExposure(
+            id: UUID(),
+            rollID: rollID,
+            participantID: creatorParticipantID,
+            exposureNumber: 1,
+            renderSeed: "current"
+        )
+        let exposureRepository = FakeDetailExposureRepository(
+            fetchByRollResults: [],
+            fetchByParticipantResults: [.success([currentExposure])]
+        )
+        let participantRepository = FakeDetailParticipantRepository(
+            participants: [
+                makeParticipant(id: creatorParticipantID, rollID: rollID, userID: creatorUserID, status: .shooting, name: "Creator"),
+                makeParticipant(id: otherParticipantID, rollID: rollID, userID: UUID(), status: .shooting, name: "Participant B")
+            ]
+        )
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [
+                .success(makeRoll(id: rollID, type: .shared, status: .shooting, creatorID: creatorUserID))
+            ]),
+            authRepository: FakeDetailAuthRepository(session: AuthSession(userID: creatorUserID, displayName: "Creator")),
+            participantRepository: participantRepository,
+            exposureRepository: exposureRepository,
+            exposureMirrorStore: InMemoryExposureMirrorStore(),
+            diagnosticsEnabled: true
+        )
+
+        await viewModel.load()
+
+        #expect(await exposureRepository.fetchedRollIDs.isEmpty)
+        #expect(await exposureRepository.fetchedParticipantIDs == [creatorParticipantID])
+        #expect(viewModel.mirroredExposures.count == 1)
+        #expect(viewModel.mirroredExposures.first?.participant_id == creatorParticipantID)
+    }
+
+    @Test
+    func sharedRevealPermissionIsCreatorOnlyWhenReadyToReveal() async {
+        let rollID = UUID(uuidString: "13131313-0000-0000-0000-000000000001")!
+        let creatorUserID = UUID(uuidString: "13131313-0000-0000-0000-0000000000A1")!
+        let participantUserID = UUID(uuidString: "13131313-0000-0000-0000-0000000000B2")!
+        let creatorParticipantID = UUID(uuidString: "13131313-0000-0000-0000-0000000000C3")!
+        let participantParticipantID = UUID(uuidString: "13131313-0000-0000-0000-0000000000D4")!
+        let participants = [
+            makeParticipant(id: creatorParticipantID, rollID: rollID, userID: creatorUserID, status: .finished, name: "Creator"),
+            makeParticipant(id: participantParticipantID, rollID: rollID, userID: participantUserID, status: .finished, name: "Participant")
+        ]
+        let sharedRoll = makeRoll(id: rollID, type: .shared, status: .readyToReveal, creatorID: creatorUserID)
+
+        let creatorViewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [.success(sharedRoll)]),
+            authRepository: FakeDetailAuthRepository(session: AuthSession(userID: creatorUserID, displayName: "Creator")),
+            participantRepository: FakeDetailParticipantRepository(participants: participants),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [], fetchByParticipantResults: [.success([])]),
+            exposureMirrorStore: InMemoryExposureMirrorStore(),
+            diagnosticsEnabled: true
+        )
+        let participantViewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [.success(sharedRoll)]),
+            authRepository: FakeDetailAuthRepository(session: AuthSession(userID: participantUserID, displayName: "Participant")),
+            participantRepository: FakeDetailParticipantRepository(participants: participants),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [], fetchByParticipantResults: [.success([])]),
+            exposureMirrorStore: InMemoryExposureMirrorStore(),
+            diagnosticsEnabled: true
+        )
+
+        await creatorViewModel.load()
+        await participantViewModel.load()
+
+        #expect(creatorViewModel.shouldShowRevealAction)
+        #expect(participantViewModel.shouldShowRevealAction == false)
+        #expect(participantViewModel.sharedReadyMessage == "Waiting for the creator to reveal the finished roll.")
+    }
 }
 
 private actor FakeDetailRollRepository: RollRepository {
@@ -398,10 +481,16 @@ private actor FakeDetailRollRepository: RollRepository {
 
 private actor FakeDetailExposureRepository: ExposureRepository {
     private var fetchByRollResults: [Result<[LocalExposure], Error>]
+    private var fetchByParticipantResults: [Result<[LocalExposure], Error>]
     private(set) var fetchedRollIDs: [UUID] = []
+    private(set) var fetchedParticipantIDs: [UUID] = []
 
-    init(fetchByRollResults: [Result<[LocalExposure], Error>]) {
+    init(
+        fetchByRollResults: [Result<[LocalExposure], Error>],
+        fetchByParticipantResults: [Result<[LocalExposure], Error>] = []
+    ) {
         self.fetchByRollResults = fetchByRollResults
+        self.fetchByParticipantResults = fetchByParticipantResults
     }
 
     func fetchExposures(forRollID rollID: UUID) async throws -> [LocalExposure] {
@@ -414,7 +503,15 @@ private actor FakeDetailExposureRepository: ExposureRepository {
         return try result.get()
     }
 
-    func fetchExposures(forParticipantID participantID: UUID) async throws -> [LocalExposure] { [] }
+    func fetchExposures(forParticipantID participantID: UUID) async throws -> [LocalExposure] {
+        fetchedParticipantIDs.append(participantID)
+        guard !fetchByParticipantResults.isEmpty else {
+            return []
+        }
+
+        let result = fetchByParticipantResults.removeFirst()
+        return try result.get()
+    }
     func fetchExposure(id: UUID) async throws -> LocalExposure? { nil }
     func completeExposure(id: UUID, storagePath: String) async throws -> CompleteExposureResult {
         CompleteExposureResult(participantFinished: false, rollReadyToReveal: false)
@@ -426,6 +523,7 @@ private actor FakeDetailExposureRepository: ExposureRepository {
 @MainActor
 private final class RecordingExposureSyncRunner: ExposureSyncRunning {
     private(set) var processedRollIDs: [UUID] = []
+    private(set) var processedParticipantIDs: [UUID?] = []
     private let result: V2ExposureSyncRunSummary
 
     init(
@@ -440,8 +538,57 @@ private final class RecordingExposureSyncRunner: ExposureSyncRunning {
 
     func processPendingExposures(forRollID rollID: UUID) async throws -> V2ExposureSyncRunSummary {
         processedRollIDs.append(rollID)
+        processedParticipantIDs.append(nil)
         return result
     }
+
+    func processPendingExposures(forRollID rollID: UUID, participantID: UUID?) async throws -> V2ExposureSyncRunSummary {
+        processedRollIDs.append(rollID)
+        processedParticipantIDs.append(participantID)
+        return result
+    }
+}
+
+private actor FakeDetailAuthRepository: AuthRepository {
+    private let session: AuthSession?
+
+    init(session: AuthSession?) {
+        self.session = session
+    }
+
+    func currentSession() async throws -> AuthSession? {
+        session
+    }
+
+    func currentUserID() async throws -> UUID? {
+        session?.userID
+    }
+
+    func signOut() async throws {}
+}
+
+private actor FakeDetailParticipantRepository: ParticipantRepository {
+    private let participants: [LocalParticipant]
+
+    init(participants: [LocalParticipant]) {
+        self.participants = participants
+    }
+
+    func fetchParticipants(forRollID rollID: UUID) async throws -> [LocalParticipant] {
+        participants.filter { $0.roll_id == rollID }
+    }
+
+    func fetchParticipant(id: UUID) async throws -> LocalParticipant? {
+        participants.first(where: { $0.id == id })
+    }
+
+    func joinRoll(inviteToken: String) async throws -> JoinRollResult {
+        JoinRollResult(rollID: UUID(), participantID: UUID())
+    }
+
+    func leaveRoll(rollID: UUID) async throws {}
+    func saveParticipant(_ participant: LocalParticipant) async throws {}
+    func deleteParticipant(id: UUID) async throws {}
 }
 
 @MainActor
@@ -494,18 +641,37 @@ private final class InMemoryExposureMirrorStore: ExposureMirrorStore {
 
 private func makeRoll(
     id: UUID,
+    type: V2Domain.RollType = .personal,
     status: V2Domain.RollStatus,
-    exposures: Int = 12
+    exposures: Int = 12,
+    creatorID: UUID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
 ) -> LocalRoll {
     LocalRoll(
         id: id,
         title: "Test Roll",
-        type: .personal,
+        type: type,
         status: status,
         film_stock_id: FilmStock.kodakGold200.rawValue,
         exposures_per_participant: exposures,
-        creator_id: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!,
+        creator_id: creatorID,
         created_at: .now
+    )
+}
+
+private func makeParticipant(
+    id: UUID,
+    rollID: UUID,
+    userID: UUID,
+    status: V2Domain.ParticipantStatus,
+    name: String
+) -> LocalParticipant {
+    LocalParticipant(
+        id: id,
+        roll_id: rollID,
+        user_id: userID,
+        display_name: name,
+        status: status,
+        joined_at: .now
     )
 }
 

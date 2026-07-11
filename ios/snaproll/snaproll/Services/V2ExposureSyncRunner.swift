@@ -13,6 +13,9 @@ struct V2ExposureSyncRunSummary: Sendable, Equatable {
 protocol ExposureSyncRunning: Sendable {
     @MainActor
     func processPendingExposures(forRollID rollID: UUID) async throws -> V2ExposureSyncRunSummary
+
+    @MainActor
+    func processPendingExposures(forRollID rollID: UUID, participantID: UUID?) async throws -> V2ExposureSyncRunSummary
 }
 
 @MainActor
@@ -33,6 +36,13 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
     }
 
     func processPendingExposures(forRollID rollID: UUID) async throws -> V2ExposureSyncRunSummary {
+        try await processPendingExposures(forRollID: rollID, participantID: nil)
+    }
+
+    func processPendingExposures(
+        forRollID rollID: UUID,
+        participantID: UUID?
+    ) async throws -> V2ExposureSyncRunSummary {
         guard !activeRollIDs.contains(rollID) else {
             return V2ExposureSyncRunSummary(
                 processedExposureIDs: [],
@@ -45,6 +55,13 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
         defer { activeRollIDs.remove(rollID) }
 
         let exposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
+            .filter { exposure in
+                guard let participantID else {
+                    return true
+                }
+
+                return exposure.participant_id == participantID
+            }
             .sorted { $0.exposure_number < $1.exposure_number }
 
         var processedExposureIDs: [UUID] = []

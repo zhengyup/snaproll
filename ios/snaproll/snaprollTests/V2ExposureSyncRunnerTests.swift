@@ -195,6 +195,56 @@ struct V2ExposureSyncRunnerTests {
         #expect(updated.first?.sync_state == .synced)
         #expect(updated.first?.cloud_storage_path == exposure.canonicalCloudStoragePath)
     }
+
+    @Test
+    func sharedSyncOnlyProcessesCurrentParticipantExposures() async throws {
+        let rollID = UUID(uuidString: "77777777-0000-0000-0000-000000000001")!
+        let currentParticipantID = UUID(uuidString: "77777777-0000-0000-0000-0000000000A1")!
+        let otherParticipantID = UUID(uuidString: "77777777-0000-0000-0000-0000000000B2")!
+
+        let currentExposure = LocalExposure(
+            id: UUID(uuidString: "77777777-0000-0000-0000-000000000101")!,
+            roll_id: rollID,
+            participant_id: currentParticipantID,
+            exposure_number: 1,
+            render_seed: "current",
+            sync_state: .localOnly,
+            updated_at: .now
+        )
+        let otherExposure = LocalExposure(
+            id: UUID(uuidString: "77777777-0000-0000-0000-000000000102")!,
+            roll_id: rollID,
+            participant_id: otherParticipantID,
+            exposure_number: 1,
+            render_seed: "other",
+            sync_state: .localOnly,
+            updated_at: .now
+        )
+
+        let store = RunnerMirrorStore(initialExposures: [rollID: [currentExposure, otherExposure]])
+        let uploadStage = RecordingUploadStage(exposureMirrorStore: store)
+        let metadataStage = RecordingMetadataStage(exposureMirrorStore: store)
+        let runner = V2ExposureSyncRunner(
+            exposureMirrorStore: store,
+            uploadStage: uploadStage,
+            metadataStage: metadataStage
+        )
+
+        let summary = try await runner.processPendingExposures(
+            forRollID: rollID,
+            participantID: currentParticipantID
+        )
+        let updated = try await store.fetchExposures(forRollID: rollID)
+        let syncedCurrent = updated.first(where: { $0.participant_id == currentParticipantID })
+        let untouchedOther = updated.first(where: { $0.participant_id == otherParticipantID })
+
+        #expect(summary.processedExposureIDs == [currentExposure.id])
+        #expect(await uploadStage.processedExposureIDs == [currentExposure.id])
+        #expect(await metadataStage.processedExposureIDs == [currentExposure.id])
+        #expect(syncedCurrent?.sync_state == .synced)
+        #expect(untouchedOther?.sync_state == .localOnly)
+        #expect(untouchedOther?.cloud_storage_path == nil)
+    }
 }
 
 @MainActor

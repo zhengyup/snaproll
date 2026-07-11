@@ -28,6 +28,8 @@ enum AppConfig {
         // Keep this disabled until V2 auth/session bootstrap is ready for manual rollout.
         static let isSessionBootstrapEnabled = true
         static let storageBucketName = "snaproll-originals"
+        static let defaultCreateRollExposureCount = 3
+        static let createRollExposureCountRange = 1...36
 
         #if DEBUG
         // Change only this value to switch between a developer-facing V2 experience and a user-facing one.

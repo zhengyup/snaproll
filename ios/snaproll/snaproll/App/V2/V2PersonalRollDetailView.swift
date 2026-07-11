@@ -31,6 +31,8 @@ struct V2PersonalRollDetailView: View {
             wrappedValue: V2PersonalRollDetailViewModel(
                 rollID: rollID,
                 rollRepository: dependencies.rollRepository,
+                authRepository: dependencies.authRepository,
+                participantRepository: dependencies.participantRepository,
                 exposureRepository: dependencies.exposureRepository,
                 exposureMirrorStore: dependencies.exposureMirrorStore,
                 photoStorageService: dependencies.photoStorageService,
@@ -45,6 +47,10 @@ struct V2PersonalRollDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 headerCard
                 progressCard
+
+                if viewModel.shouldShowParticipantProgress {
+                    participantProgressCard
+                }
 
                 if viewModel.shouldShowDiagnostics {
                     diagnosticsCard
@@ -69,6 +75,8 @@ struct V2PersonalRollDetailView: View {
             if let roll = viewModel.roll {
                 V2CaptureView(
                     roll: roll,
+                    currentParticipantID: viewModel.currentParticipant?.id,
+                    currentParticipantDisplayName: viewModel.currentParticipantDisplayName,
                     dependencies: dependencies,
                     onCaptureCompleted: {
                         await viewModel.handleCaptureSessionEnded()
@@ -77,10 +85,17 @@ struct V2PersonalRollDetailView: View {
             }
         }
         .navigationDestination(isPresented: $isShowingGalleryView) {
-            V2PersonalRevealGalleryView(
-                rollID: viewModel.rollID,
-                dependencies: dependencies
-            )
+            if viewModel.roll?.type == .shared {
+                V2SharedRevealGalleryView(
+                    rollID: viewModel.rollID,
+                    dependencies: dependencies
+                )
+            } else {
+                V2PersonalRevealGalleryView(
+                    rollID: viewModel.rollID,
+                    dependencies: dependencies
+                )
+            }
         }
         .task {
             await viewModel.handleAppear()
@@ -110,10 +125,22 @@ struct V2PersonalRollDetailView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.6))
 
+            if let currentParticipantDisplayName = viewModel.currentParticipantDisplayName, viewModel.isSharedRoll {
+                Text("Current participant: \(currentParticipantDisplayName)")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
             if let syncStatus = viewModel.userFacingSyncStatus {
                 Text(syncStatus)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.white.opacity(0.78))
+            }
+
+            if let sharedReadyMessage = viewModel.sharedReadyMessage {
+                Text(sharedReadyMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.72))
             }
 
             if viewModel.shouldShowStartRoll {
@@ -146,7 +173,7 @@ struct V2PersonalRollDetailView: View {
                 Button {
                     isShowingCaptureView = true
                 } label: {
-                    Text("Capture Next Exposure")
+                    Text(viewModel.isSharedRoll ? "Capture Your Next Exposure" : "Capture Next Exposure")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                 }
@@ -226,6 +253,45 @@ struct V2PersonalRollDetailView: View {
                 progressMetric(title: "Total", value: "\(viewModel.totalExposures)")
                 progressMetric(title: "Captured", value: "\(viewModel.capturedExposures)")
                 progressMetric(title: "Remaining", value: "\(viewModel.remainingExposures)")
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground)
+    }
+
+    private var participantProgressCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Participant Progress")
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.95))
+
+            ForEach(viewModel.participantProgressRows) { row in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Text(row.displayName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+
+                        if row.isCurrentUser {
+                            capsuleLabel("You")
+                        }
+
+                        if row.isCreator {
+                            capsuleLabel("Creator")
+                        }
+                    }
+
+                    Text(row.status.rawValue.replacingOccurrences(of: "_", with: " "))
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.68))
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.black.opacity(0.14))
+                )
             }
         }
         .padding(18)
@@ -462,6 +528,18 @@ struct V2PersonalRollDetailView: View {
                 .foregroundStyle(.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func capsuleLabel(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+            )
     }
 
     private var cardBackground: some View {

@@ -15,6 +15,8 @@ final class V2CaptureViewModel: ObservableObject {
     @Published var selectedSourceKind: V2ImageSourceKind
 
     let rollID: UUID
+    let currentParticipantID: UUID?
+    let currentParticipantDisplayName: String?
 
     private let exposureMirrorStore: any ExposureMirrorStore
     private let capturePipeline: V2LocalCapturePipeline
@@ -23,6 +25,8 @@ final class V2CaptureViewModel: ObservableObject {
 
     init(
         roll: LocalRoll,
+        currentParticipantID: UUID? = nil,
+        currentParticipantDisplayName: String? = nil,
         exposureMirrorStore: any ExposureMirrorStore,
         capturePipeline: V2LocalCapturePipeline,
         photoStorageService: PhotoStorageService,
@@ -30,6 +34,8 @@ final class V2CaptureViewModel: ObservableObject {
     ) {
         self.roll = roll
         self.rollID = roll.id
+        self.currentParticipantID = currentParticipantID
+        self.currentParticipantDisplayName = currentParticipantDisplayName
         self.exposureMirrorStore = exposureMirrorStore
         self.capturePipeline = capturePipeline
         self.photoStorageService = photoStorageService
@@ -80,6 +86,10 @@ final class V2CaptureViewModel: ObservableObject {
         AppConfig.V2.isExposureDiagnosticsEnabled && selectedSourceKind == .developmentSample
     }
 
+    var isSharedRoll: Bool {
+        roll.type == .shared
+    }
+
     func handleAppear() {
         cameraProvider?.handleAppear()
 
@@ -106,7 +116,11 @@ final class V2CaptureViewModel: ObservableObject {
         defer { isCapturing = false }
 
         do {
-            let result = try await capturePipeline.captureNextExposure(forRollID: rollID, using: provider)
+            let result = try await capturePipeline.captureNextExposure(
+                forRollID: rollID,
+                participantID: currentParticipantID,
+                using: provider
+            )
             await loadMirroredExposures()
 
             if remainingExposures == 0 {
@@ -138,6 +152,13 @@ final class V2CaptureViewModel: ObservableObject {
     private func loadMirroredExposures() async {
         do {
             mirroredExposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
+                .filter { exposure in
+                    guard let currentParticipantID else {
+                        return true
+                    }
+
+                    return exposure.participant_id == currentParticipantID
+                }
                 .sorted(by: { $0.exposure_number < $1.exposure_number })
         } catch {
             stateMessage = error.localizedDescription

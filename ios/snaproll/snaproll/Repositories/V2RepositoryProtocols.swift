@@ -88,6 +88,7 @@ protocol SyncRepository: Sendable {
 
 protocol ExposureAssetStorageRepository: Sendable {
     func uploadJPEG(data: Data, to storagePath: String) async throws
+    func downloadJPEG(from storagePath: String) async throws -> Data
 }
 
 protocol RenderCacheRepository: Sendable {

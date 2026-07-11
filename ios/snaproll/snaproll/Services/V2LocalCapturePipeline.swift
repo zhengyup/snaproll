@@ -35,10 +35,18 @@ final class V2LocalCapturePipeline {
 
     func captureNextExposure(
         forRollID rollID: UUID,
+        participantID: UUID? = nil,
         using provider: any ImageSourceProvider
     ) async throws -> V2CaptureResult {
         let payload = try await provider.captureImage()
         let exposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
+            .filter { exposure in
+                guard let participantID else {
+                    return true
+                }
+
+                return exposure.participant_id == participantID
+            }
             .sorted { $0.exposure_number < $1.exposure_number }
 
         guard let targetExposure = exposures.first(where: Self.isEmptyExposure) else {

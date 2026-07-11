@@ -45,6 +45,7 @@ struct V2CloudHomeView: View {
                     V2CloudCreateRollPanel(
                         draftTitle: $viewModel.draftTitle,
                         selectedCreationType: $viewModel.selectedCreationType,
+                        selectedExposureCount: $viewModel.selectedExposureCount,
                         isCreating: viewModel.isCreatingRoll,
                         onCreate: {
                             Task {
@@ -257,6 +258,7 @@ private struct V2CloudIdentityPanel: View {
 private struct V2CloudCreateRollPanel: View {
     @Binding var draftTitle: String
     @Binding var selectedCreationType: V2Domain.RollType
+    @Binding var selectedExposureCount: Int
     let isCreating: Bool
     let onCreate: () -> Void
 
@@ -282,6 +284,35 @@ private struct V2CloudCreateRollPanel: View {
                         .fill(.white.opacity(0.08))
                 )
                 .foregroundStyle(.white)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Exposure Count")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(selectedExposureCount)")
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text(selectedExposureCount == 1 ? "exposure" : "exposures")
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+
+                Picker("Exposure Count", selection: $selectedExposureCount) {
+                    ForEach(Array(AppConfig.V2.createRollExposureCountRange), id: \.self) { count in
+                        Text("\(count)").tag(count)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 110)
+                .clipped()
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.white.opacity(0.08))
+                )
+            }
 
             Button {
                 onCreate()
@@ -323,11 +354,11 @@ private struct V2CloudCreateRollPanel: View {
 
     private var helperText: String {
         if selectedCreationType == .shared {
-            return "Creates a SHARED roll through the V2 Supabase RPC path. The creator becomes the first participant and receives an active invite token."
+            return "Creates a SHARED roll through the V2 Supabase RPC path with \(selectedExposureCount) exposure\(selectedExposureCount == 1 ? "" : "s") per participant. The creator becomes the first participant and receives an active invite token."
         }
 
         if AppConfig.V2.showsDeveloperUI {
-            return "Creates a PERSONAL roll through the V2 Supabase RPC path with 12 exposures and a single participant."
+            return "Creates a PERSONAL roll through the V2 Supabase RPC path with \(selectedExposureCount) exposure\(selectedExposureCount == 1 ? "" : "s") and a single participant."
         }
 
         return "Create a new roll to begin capturing intentionally."
@@ -492,7 +523,7 @@ private struct V2CloudRollListSection: View {
                 VStack(spacing: 12) {
                     ForEach(rolls, id: \.id) { roll in
                         NavigationLink {
-                            if roll.type == .shared {
+                            if roll.type == .shared && roll.status == .waitingForParticipants {
                                 V2SharedRollLobbyView(
                                     rollID: roll.id,
                                     developmentIdentity: selectedIdentity,

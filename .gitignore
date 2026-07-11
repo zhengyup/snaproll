@@ -37,6 +37,7 @@ EOF
 .deriveddata-tests-phase9a/
 .deriveddata-tests-phase9b/
 .deriveddata-phase9b-build/
+.derivedData-tests-exposure-picker/
 
 # image testing 
 film-references/

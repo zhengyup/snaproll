@@ -24,6 +24,7 @@ final class V2CloudHomeViewModel: ObservableObject {
     @Published var draftTitle = ""
     @Published var joinInviteToken = ""
     @Published var selectedCreationType: V2Domain.RollType = .personal
+    @Published var selectedExposureCount: Int = AppConfig.V2.defaultCreateRollExposureCount
 
     private let authRepository: any AuthRepository
     private let rollRepository: any RollRepository
@@ -83,7 +84,7 @@ final class V2CloudHomeViewModel: ObservableObject {
                 title: title,
                 type: type,
                 filmStockID: FilmStock.kodakGold200.rawValue,
-                exposuresPerParticipant: 12,
+                exposuresPerParticipant: selectedExposureCount,
                 participantCap: type == .shared ? 10 : 1
             )
 

@@ -161,6 +161,10 @@ private struct RollIDRPCRequest: Encodable {
     let p_roll_id: UUID
 }
 
+private struct ParticipantIDRPCRequest: Encodable {
+    let p_participant_id: UUID
+}
+
 private struct CompleteExposureRPCRequest: Encodable {
     let p_exposure_id: UUID
     let p_storage_path: String
@@ -499,9 +503,11 @@ final class SupabaseParticipantRepository: ParticipantRepository, @unchecked Sen
     }
 
     func deleteParticipant(id: UUID) async throws {
-        throw V2RepositoryError.unsupportedOperation(
-            "deleteParticipant(id:) is deferred until the dedicated V2 participant-management flow is implemented."
-        )
+        _ = try await withClient(operation: "participant.deleteParticipant") { client in
+            try await client
+                .rpc("remove_participant", params: ParticipantIDRPCRequest(p_participant_id: id))
+                .execute()
+        }
     }
 }
 
@@ -679,6 +685,14 @@ final class SupabaseExposureAssetStorageRepository: ExposureAssetStorageReposito
                         upsert: false
                     )
                 )
+        }
+    }
+
+    func downloadJPEG(from storagePath: String) async throws -> Data {
+        try await withClient(operation: "storage.downloadExposureJPEG") { client in
+            try await client.storage
+                .from(AppConfig.V2.storageBucketName)
+                .download(path: storagePath)
         }
     }
 }

@@ -8,6 +8,8 @@ struct V2CaptureView: View {
 
     init(
         roll: LocalRoll,
+        currentParticipantID: UUID? = nil,
+        currentParticipantDisplayName: String? = nil,
         dependencies: V2DependencyContainer,
         onCaptureCompleted: @escaping () async -> Void = {}
     ) {
@@ -15,6 +17,8 @@ struct V2CaptureView: View {
         _viewModel = StateObject(
             wrappedValue: V2CaptureViewModel(
                 roll: roll,
+                currentParticipantID: currentParticipantID,
+                currentParticipantDisplayName: currentParticipantDisplayName,
                 exposureMirrorStore: dependencies.exposureMirrorStore,
                 capturePipeline: V2LocalCapturePipeline(
                     exposureMirrorStore: dependencies.exposureMirrorStore,
@@ -154,6 +158,12 @@ struct V2CaptureView: View {
             Text("Exposure Progress")
                 .font(.headline)
                 .foregroundStyle(.white)
+
+            if viewModel.isSharedRoll, let currentParticipantDisplayName = viewModel.currentParticipantDisplayName {
+                Text("Current participant: \(currentParticipantDisplayName)")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
 
             HStack {
                 metric(title: "Captured", value: "\(viewModel.capturedExposures)")

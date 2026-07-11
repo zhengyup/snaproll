@@ -41,6 +41,7 @@ enum V2PersonalRevealGalleryState: Equatable {
 
 enum V2GalleryRenderingSource: String, Equatable {
     case local = "LOCAL"
+    case cloud = "CLOUD"
     case unavailable = "UNAVAILABLE"
 }
 

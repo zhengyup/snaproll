@@ -50,7 +50,7 @@ struct V2CloudHomeViewModelTests {
                         type: .personal,
                         status: .draft,
                         film_stock_id: FilmStock.kodakGold200.rawValue,
-                        exposures_per_participant: 12,
+                        exposures_per_participant: AppConfig.V2.defaultCreateRollExposureCount,
                         creator_id: creatorSession.userID,
                         created_at: .now
                     )
@@ -70,8 +70,31 @@ struct V2CloudHomeViewModelTests {
         #expect(createCall?.title == "Untitled Roll")
         #expect(createCall?.type == .personal)
         #expect(createCall?.filmStockID == FilmStock.kodakGold200.rawValue)
-        #expect(createCall?.exposuresPerParticipant == 12)
+        #expect(createCall?.exposuresPerParticipant == AppConfig.V2.defaultCreateRollExposureCount)
         #expect(createCall?.participantCap == 1)
+    }
+
+    @Test
+    func createRollUsesSelectedExposureCount() async {
+        let creatorSession = AuthSession(
+            userID: UUID(uuidString: "BCBCBCBC-BCBC-BCBC-BCBC-BCBCBCBCBCBC")!,
+            displayName: "Creator"
+        )
+        let rollRepository = RecordingFakeRollRepository(
+            fetchResults: [.success([]), .success([])]
+        )
+        let viewModel = V2CloudHomeViewModel(
+            authRepository: MutableFakeAuthRepository(session: creatorSession),
+            rollRepository: rollRepository,
+            participantRepository: RecordingFakeParticipantRepository()
+        )
+        viewModel.selectedExposureCount = 7
+
+        await viewModel.load()
+        await viewModel.createPersonalRoll()
+
+        let createCall = await rollRepository.lastCreateCall
+        #expect(createCall?.exposuresPerParticipant == 7)
     }
 
     @Test
@@ -88,7 +111,7 @@ struct V2CloudHomeViewModelTests {
             type: .personal,
             status: .draft,
             film_stock_id: FilmStock.kodakGold200.rawValue,
-            exposures_per_participant: 12,
+            exposures_per_participant: AppConfig.V2.defaultCreateRollExposureCount,
             creator_id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
             created_at: .now
         )
@@ -98,7 +121,7 @@ struct V2CloudHomeViewModelTests {
             type: .personal,
             status: .draft,
             film_stock_id: FilmStock.kodakGold200.rawValue,
-            exposures_per_participant: 12,
+            exposures_per_participant: AppConfig.V2.defaultCreateRollExposureCount,
             creator_id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
             created_at: .now
         )
@@ -163,7 +186,7 @@ struct V2CloudHomeViewModelTests {
             type: .shared,
             status: .waitingForParticipants,
             film_stock_id: FilmStock.kodakGold200.rawValue,
-            exposures_per_participant: 12,
+            exposures_per_participant: AppConfig.V2.defaultCreateRollExposureCount,
             creator_id: creatorSession.userID,
             created_at: .now
         )
@@ -183,12 +206,14 @@ struct V2CloudHomeViewModelTests {
         )
         viewModel.selectedCreationType = .shared
         viewModel.draftTitle = "Weekend Crew"
+        viewModel.selectedExposureCount = 5
 
         await viewModel.load()
         await viewModel.createRoll()
 
         let createCall = await rollRepository.lastCreateCall
         #expect(createCall?.type == .shared)
+        #expect(createCall?.exposuresPerParticipant == 5)
         #expect(createCall?.participantCap == 10)
         #expect(viewModel.lastCreatedSharedInviteToken == "SHARED-TOKEN")
     }
@@ -205,7 +230,7 @@ struct V2CloudHomeViewModelTests {
             type: .shared,
             status: .waitingForParticipants,
             film_stock_id: FilmStock.kodakGold200.rawValue,
-            exposures_per_participant: 12,
+            exposures_per_participant: AppConfig.V2.defaultCreateRollExposureCount,
             creator_id: UUID(),
             created_at: .now
         )
