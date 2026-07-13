@@ -397,6 +397,12 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         await load()
     }
 
+    func refreshForSharedStateSynchronization() async throws -> V2Domain.RollStatus? {
+        try await reloadFromSources()
+        state = .loaded
+        return roll?.status
+    }
+
     private func reloadFromSources() async throws {
         guard let fetchedRoll = try await rollRepository.fetchRoll(id: rollID) else {
             throw V2RepositoryError.notFound("The selected roll could not be found.")

@@ -30,6 +30,9 @@ enum AppConfig {
         static let storageBucketName = "snaproll-originals"
         static let defaultCreateRollExposureCount = 3
         static let createRollExposureCountRange = 1...36
+        static let waitingForParticipantsPollingInterval: TimeInterval = 5
+        static let sharedShootingPollingInterval: TimeInterval = 10
+        static let readyToRevealPollingInterval: TimeInterval = 5
 
         #if DEBUG
         // Change only this value to switch between a developer-facing V2 experience and a user-facing one.

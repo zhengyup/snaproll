@@ -3,6 +3,7 @@ import SwiftUI
 struct V2PersonalRollDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: V2PersonalRollDetailViewModel
+    @StateObject private var synchronizer: V2SharedStateSynchronizer
     @State private var isShowingCaptureView = false
     @State private var isShowingGalleryView = false
     private let dependencies: V2DependencyContainer
@@ -27,18 +28,26 @@ struct V2PersonalRollDetailView: View {
             uploadStage: uploadPipeline,
             metadataStage: metadataPipeline
         )
-        _viewModel = StateObject(
-            wrappedValue: V2PersonalRollDetailViewModel(
-                rollID: rollID,
-                rollRepository: dependencies.rollRepository,
-                authRepository: dependencies.authRepository,
-                participantRepository: dependencies.participantRepository,
-                exposureRepository: dependencies.exposureRepository,
-                exposureMirrorStore: dependencies.exposureMirrorStore,
-                photoStorageService: dependencies.photoStorageService,
-                syncRunner: syncRunner,
-                activeDevelopmentIdentityLabel: developmentIdentity?.displayName
-            )
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: dependencies.rollRepository,
+            authRepository: dependencies.authRepository,
+            participantRepository: dependencies.participantRepository,
+            exposureRepository: dependencies.exposureRepository,
+            exposureMirrorStore: dependencies.exposureMirrorStore,
+            photoStorageService: dependencies.photoStorageService,
+            syncRunner: syncRunner,
+            activeDevelopmentIdentityLabel: developmentIdentity?.displayName
+        )
+        _viewModel = StateObject(wrappedValue: viewModel)
+        _synchronizer = StateObject(
+            wrappedValue: V2SharedStateSynchronizer(rollID: rollID) { [weak viewModel] in
+                guard let viewModel else {
+                    return nil
+                }
+
+                return try await viewModel.refreshForSharedStateSynchronization()
+            }
         )
     }
 
@@ -80,6 +89,7 @@ struct V2PersonalRollDetailView: View {
                     dependencies: dependencies,
                     onCaptureCompleted: {
                         await viewModel.handleCaptureSessionEnded()
+                        await synchronizer.refreshNow()
                     }
                 )
             }
@@ -99,14 +109,26 @@ struct V2PersonalRollDetailView: View {
         }
         .task {
             await viewModel.handleAppear()
+            if viewModel.isSharedRoll {
+                synchronizer.seedLatestKnownState(viewModel.roll?.status)
+                await synchronizer.start()
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else {
-                return
-            }
-
             Task {
-                await viewModel.handleSceneBecameActive()
+                if newPhase == .active {
+                    await viewModel.handleSceneBecameActive()
+                    if viewModel.isSharedRoll {
+                        await synchronizer.handleSceneActivity(isActive: true)
+                    }
+                } else {
+                    await synchronizer.handleSceneActivity(isActive: false)
+                }
+            }
+        }
+        .onDisappear {
+            Task {
+                await synchronizer.stop()
             }
         }
     }
@@ -147,6 +169,9 @@ struct V2PersonalRollDetailView: View {
                 Button {
                     Task {
                         await viewModel.startRoll()
+                        if viewModel.isSharedRoll {
+                            await synchronizer.refreshNow()
+                        }
                     }
                 } label: {
                     if viewModel.isStartingRoll {
@@ -190,6 +215,9 @@ struct V2PersonalRollDetailView: View {
                 Button {
                     Task {
                         let didReveal = await viewModel.revealRoll()
+                        if viewModel.isSharedRoll {
+                            await synchronizer.refreshNow()
+                        }
                         if didReveal {
                             isShowingGalleryView = true
                         }
@@ -309,6 +337,9 @@ struct V2PersonalRollDetailView: View {
                 Button {
                     Task {
                         await viewModel.processPendingExposures()
+                        if viewModel.isSharedRoll {
+                            await synchronizer.refreshNow()
+                        }
                     }
                 } label: {
                     if viewModel.isSynchronizing {
@@ -335,6 +366,9 @@ struct V2PersonalRollDetailView: View {
                 Button {
                     Task {
                         await viewModel.retryFailedSynchronization()
+                        if viewModel.isSharedRoll {
+                            await synchronizer.refreshNow()
+                        }
                     }
                 } label: {
                     if viewModel.isSynchronizing {
@@ -360,7 +394,11 @@ struct V2PersonalRollDetailView: View {
             if viewModel.shouldShowForceRefreshAction {
                 Button {
                     Task {
-                        await viewModel.forceRefresh()
+                        if viewModel.isSharedRoll {
+                            await synchronizer.refreshNow()
+                        } else {
+                            await viewModel.forceRefresh()
+                        }
                     }
                 } label: {
                     Text("Force Refresh")
@@ -398,6 +436,41 @@ struct V2PersonalRollDetailView: View {
                     diagnosticsSummaryLine(title: "Pending", value: "\(summary.pendingCount)")
                     diagnosticsSummaryLine(title: "Failed", value: "\(summary.failedCount)")
                     diagnosticsSummaryLine(title: "Synchronizing", value: summary.isSynchronizing ? "Yes" : "No")
+
+                    if viewModel.isSharedRoll {
+                        diagnosticsSummaryLine(title: "Polling active", value: synchronizer.snapshot.isPollingActive ? "Yes" : "No")
+                        diagnosticsSummaryLine(title: "Polling blocked", value: synchronizer.snapshot.isPollingBlocked ? "Yes" : "No")
+                        diagnosticsSummaryLine(title: "Poll count", value: "\(synchronizer.snapshot.pollCount)")
+
+                        if let currentIntervalSeconds = synchronizer.snapshot.currentIntervalSeconds {
+                            diagnosticsSummaryLine(title: "Polling interval", value: String(format: "%.0f s", currentIntervalSeconds))
+                        }
+
+                        if let latestBackendState = synchronizer.snapshot.latestBackendState {
+                            diagnosticsSummaryLine(
+                                title: "Latest backend state",
+                                value: latestBackendState.rawValue.replacingOccurrences(of: "_", with: " ")
+                            )
+                        }
+
+                        if let lastRefreshAt = synchronizer.snapshot.lastRefreshAt {
+                            diagnosticsSummaryLine(
+                                title: "Last refresh",
+                                value: lastRefreshAt.formatted(date: .abbreviated, time: .standard)
+                            )
+                        }
+
+                        if let lastRefreshDurationMilliseconds = synchronizer.snapshot.lastRefreshDurationMilliseconds {
+                            diagnosticsSummaryLine(
+                                title: "Refresh duration",
+                                value: String(format: "%.1f ms", lastRefreshDurationMilliseconds)
+                            )
+                        }
+
+                        if let lastErrorMessage = synchronizer.snapshot.lastErrorMessage {
+                            diagnosticsSummaryLine(title: "Last polling error", value: lastErrorMessage)
+                        }
+                    }
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)

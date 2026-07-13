@@ -2019,3 +2019,123 @@ Supporting V2 domain types:
 - The repository did not contain the exact `phase-12-shared-roll-execution-context.md` filename referenced in the task prompt, so implementation followed `v2-docs/ARCHITECTURE.md` plus the current Phase 11/Phase 8/Phase 9 V2 code paths as the authoritative execution baseline.
 - Shared reveal remains creator-only, matching the shared-roll lifecycle defined in the architecture.
 - Cloud download fallback is used only for revealed shared-gallery viewing, not for capture or sync.
+
+## Phase 13 – V2 Shared State Synchronization
+
+### Files changed
+
+- `ios/snaproll/snaproll/Services/V2SharedStateSynchronizer.swift`
+- `ios/snaproll/snaproll/Utilities/AppConfig.swift`
+- `ios/snaproll/snaproll/ViewModels/V2SharedRollLobbyViewModel.swift`
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+- `ios/snaproll/snaproll/App/V2/V2SharedRollLobbyView.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+- `ios/snaproll/snaprollTests/V2SharedStateSynchronizerTests.swift`
+
+### SharedStateSynchronizer architecture
+
+- Added a dedicated `V2SharedStateSynchronizer` abstraction so shared-roll polling is isolated from SwiftUI screens and repository implementations.
+- The synchronizer is intentionally read-only:
+  - it refreshes authoritative cloud state
+  - it updates local UI-facing state through existing view-model reload paths
+  - it never uploads photos
+  - it never mutates backend lifecycle directly
+- Added a registry actor to ensure only one synchronizer can actively poll a given roll at a time.
+- Added a polling snapshot model so development mode can expose diagnostics without leaking internal state into normal user mode.
+
+### Polling lifecycle
+
+- Polling intervals are now configurable through `AppConfig.V2`:
+  - `waitingForParticipantsPollingInterval`
+  - `sharedShootingPollingInterval`
+  - `readyToRevealPollingInterval`
+- Implemented lifecycle-aware polling behavior:
+  - `WAITING_FOR_PARTICIPANTS` polls every 5 seconds by default
+  - `SHOOTING` polls every 10 seconds by default
+  - `READY_TO_REVEAL` polls every 5 seconds by default
+  - `REVEALED` stops polling
+  - `DRAFT` does not poll
+- Polling starts when a shared lobby or shared roll detail screen becomes active.
+- Polling stops when:
+  - the screen disappears
+  - the app backgrounds
+  - the roll reaches a non-polling terminal state
+- The synchronizer now waits for its polling task to unwind cleanly on stop so view teardown does not leave orphaned polling work behind.
+
+### Immediate refresh triggers
+
+- Shared lobby:
+  - first load
+  - manual refresh
+  - app foreground
+  - start roll
+  - regenerate invite
+  - remove participant
+- Shared execution/detail:
+  - first load
+  - app foreground
+  - capture session end
+  - process pending exposures
+  - retry failed synchronization
+  - reveal roll
+- These refreshes reuse the same repository-backed view-model reload methods as polling rather than introducing separate sync paths.
+
+### UI integration
+
+- `V2SharedRollLobbyView` now owns a synchronizer instance tied to the current roll ID.
+- `V2PersonalRollDetailView` now enables the synchronizer only for shared rolls.
+- Shared lobby and shared roll detail development diagnostics now include:
+  - whether polling is active
+  - whether polling is blocked by another synchronizer
+  - current polling interval
+  - latest backend lifecycle state
+  - poll count
+  - last refresh time
+  - last refresh duration
+  - last polling error
+
+### Testing
+
+- Added `V2SharedStateSynchronizerTests` covering:
+  - polling start
+  - interval changes by lifecycle state
+  - stop on screen disappearance
+  - foreground resume
+  - automatic failure recovery
+  - single active synchronizer per roll
+  - stopping after reveal
+- The test sleep harness was hardened so cancellation resumes suspended polling waits instead of leaving dangling continuations behind.
+
+### Manual validation
+
+- With V2 enabled and multiple development identities:
+  - open a shared lobby as creator
+  - join from another development identity
+  - confirm the creator sees the participant list update within the waiting poll interval
+  - start the roll as creator
+  - confirm participants transition into `SHOOTING` without manual refresh
+  - complete captures and sync from each participant
+  - confirm `READY_TO_REVEAL` appears automatically
+  - reveal as creator
+  - confirm other participants observe `REVEALED` without manual refresh
+  - background and foreground the app to verify polling stops and immediately refreshes on resume
+
+### Build and test commands
+
+- Build:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase13-build CODE_SIGNING_ALLOWED=NO build`
+- Focused test attempts:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,id=EAC195FF-FF23-4BCF-A389-B7550AF27B53' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase13-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2SharedStateSynchronizerTests -only-testing:snaprollTests/V2SharedRollLobbyViewModelTests -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests test`
+  - `xcodebuild -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17 Pro' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase13-sync-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2SharedStateSynchronizerTests test`
+
+### Results
+
+- Full iOS project build passed after adding the new shared-state synchronization layer.
+- Focused simulator test execution was attempted multiple times and compiled successfully, but the local simulator runner was unstable after a simulator service failure and did not produce a clean completed test run within this session.
+- Existing warnings remain around deprecated camera orientation APIs and a pre-existing actor-isolation warning in `V2SupabaseConfiguration`.
+
+### Assumptions
+
+- The repository did not contain the exact `phase-13-shared-state-synchronization-context.md` filename referenced in the task prompt, so implementation followed `v2-docs/ARCHITECTURE.md` and the current shared-roll V2 code paths as the source of truth.
+- Manual refresh remains available, but shared state no longer depends on it for normal collaborative lifecycle transitions.
+- Polling is intentionally isolated behind `V2SharedStateSynchronizer` so Supabase Realtime can replace the transport later without rewriting view models or screen logic.

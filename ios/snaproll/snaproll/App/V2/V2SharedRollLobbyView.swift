@@ -4,7 +4,9 @@ import UIKit
 #endif
 
 struct V2SharedRollLobbyView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: V2SharedRollLobbyViewModel
+    @StateObject private var synchronizer: V2SharedStateSynchronizer
     @State private var isShowingCopyToast = false
     @State private var copyToastTask: Task<Void, Never>?
     @State private var isShowingExecutionView = false
@@ -16,17 +18,25 @@ struct V2SharedRollLobbyView: View {
         dependencies: V2DependencyContainer
     ) {
         self.dependencies = dependencies
-        _viewModel = StateObject(
-            wrappedValue: V2SharedRollLobbyViewModel(
-                rollID: rollID,
-                authRepository: dependencies.authRepository,
-                rollRepository: dependencies.rollRepository,
-                participantRepository: dependencies.participantRepository,
-                inviteRepository: dependencies.inviteRepository,
-                exposureRepository: dependencies.exposureRepository,
-                exposureMirrorStore: dependencies.exposureMirrorStore,
-                activeDevelopmentIdentityLabel: developmentIdentity?.displayName
-            )
+        let viewModel = V2SharedRollLobbyViewModel(
+            rollID: rollID,
+            authRepository: dependencies.authRepository,
+            rollRepository: dependencies.rollRepository,
+            participantRepository: dependencies.participantRepository,
+            inviteRepository: dependencies.inviteRepository,
+            exposureRepository: dependencies.exposureRepository,
+            exposureMirrorStore: dependencies.exposureMirrorStore,
+            activeDevelopmentIdentityLabel: developmentIdentity?.displayName
+        )
+        _viewModel = StateObject(wrappedValue: viewModel)
+        _synchronizer = StateObject(
+            wrappedValue: V2SharedStateSynchronizer(rollID: rollID) { [weak viewModel] in
+                guard let viewModel else {
+                    return nil
+                }
+
+                return try await viewModel.refreshForSharedStateSynchronization()
+            }
         )
     }
 
@@ -117,7 +127,7 @@ struct V2SharedRollLobbyView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Refresh") {
                     Task {
-                        await viewModel.refresh()
+                        await handleManualRefresh()
                     }
                 }
             }
@@ -130,10 +140,18 @@ struct V2SharedRollLobbyView: View {
             }
         }
         .task {
-            await viewModel.load()
+            await handleInitialLoad()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            Task {
+                await synchronizer.handleSceneActivity(isActive: newPhase == .active)
+            }
         }
         .onDisappear {
             copyToastTask?.cancel()
+            Task {
+                await synchronizer.stop()
+            }
         }
     }
 
@@ -143,6 +161,7 @@ struct V2SharedRollLobbyView: View {
                 Button {
                     Task {
                         await viewModel.startRoll()
+                        await synchronizer.refreshNow()
                     }
                 } label: {
                     if viewModel.isStartingRoll {
@@ -169,6 +188,7 @@ struct V2SharedRollLobbyView: View {
                 Button {
                     Task {
                         await viewModel.regenerateInvite()
+                        await synchronizer.refreshNow()
                     }
                 } label: {
                     if viewModel.isRegeneratingInvite {
@@ -195,6 +215,7 @@ struct V2SharedRollLobbyView: View {
                 Button {
                     Task {
                         await viewModel.leaveRoll()
+                        await synchronizer.stop()
                     }
                 } label: {
                     if viewModel.isLeavingRoll {
@@ -342,6 +363,7 @@ struct V2SharedRollLobbyView: View {
                         Button {
                             Task {
                                 await viewModel.removeParticipant(id: participant.id)
+                                await synchronizer.refreshNow()
                             }
                         } label: {
                             if viewModel.activeRemovalParticipantID == participant.id {
@@ -402,7 +424,7 @@ struct V2SharedRollLobbyView: View {
             if showsRetry {
                 Button("Retry") {
                     Task {
-                        await viewModel.refresh()
+                        await handleRetryLoad()
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -424,6 +446,30 @@ struct V2SharedRollLobbyView: View {
             diagnosticsLine("Participant count", "\(diagnostics.participantCount)")
             diagnosticsLine("Roll status", diagnostics.rollStatus.rawValue)
             diagnosticsLine("Mirrored exposures", "\(diagnostics.mirroredExposureCount)")
+            diagnosticsLine("Polling active", synchronizer.snapshot.isPollingActive ? "Yes" : "No")
+            diagnosticsLine("Polling blocked", synchronizer.snapshot.isPollingBlocked ? "Yes" : "No")
+
+            if let currentIntervalSeconds = synchronizer.snapshot.currentIntervalSeconds {
+                diagnosticsLine("Polling interval", String(format: "%.0f s", currentIntervalSeconds))
+            }
+
+            diagnosticsLine("Poll count", "\(synchronizer.snapshot.pollCount)")
+
+            if let latestBackendState = synchronizer.snapshot.latestBackendState {
+                diagnosticsLine("Latest backend state", latestBackendState.rawValue)
+            }
+
+            if let lastRefreshAt = synchronizer.snapshot.lastRefreshAt {
+                diagnosticsLine("Last refresh", lastRefreshAt.formatted(date: .abbreviated, time: .standard))
+            }
+
+            if let lastRefreshDurationMilliseconds = synchronizer.snapshot.lastRefreshDurationMilliseconds {
+                diagnosticsLine("Refresh duration", String(format: "%.1f ms", lastRefreshDurationMilliseconds))
+            }
+
+            if let lastErrorMessage = synchronizer.snapshot.lastErrorMessage {
+                diagnosticsLine("Last polling error", lastErrorMessage)
+            }
 
             if let currentParticipantID = diagnostics.currentParticipantID {
                 diagnosticsLine("Current participant ID", currentParticipantID.uuidString)
@@ -499,6 +545,36 @@ struct V2SharedRollLobbyView: View {
                 }
                 copyToastTask = nil
             }
+        }
+    }
+
+    private func handleInitialLoad() async {
+        await viewModel.load()
+
+        guard case .loaded = viewModel.state else {
+            return
+        }
+
+        synchronizer.seedLatestKnownState(viewModel.roll?.status)
+        await synchronizer.start()
+    }
+
+    private func handleRetryLoad() async {
+        await viewModel.refresh()
+
+        guard case .loaded = viewModel.state else {
+            return
+        }
+
+        synchronizer.seedLatestKnownState(viewModel.roll?.status)
+        await synchronizer.start()
+    }
+
+    private func handleManualRefresh() async {
+        if case .loaded = viewModel.state {
+            await synchronizer.refreshNow()
+        } else {
+            await handleRetryLoad()
         }
     }
 }

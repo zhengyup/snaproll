@@ -167,6 +167,12 @@ final class V2SharedRollLobbyViewModel: ObservableObject {
         await load()
     }
 
+    func refreshForSharedStateSynchronization() async throws -> V2Domain.RollStatus? {
+        try await reload()
+        state = .loaded
+        return roll?.status
+    }
+
     func leaveRoll() async {
         guard canLeaveRoll else {
             actionErrorMessage = isCreator

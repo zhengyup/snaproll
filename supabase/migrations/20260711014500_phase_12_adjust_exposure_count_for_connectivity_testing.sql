@@ -23,36 +23,28 @@ as $$
 declare
   v_user_id uuid;
   v_roll_id uuid;
-  v_roll_status text;
-  v_roll_type text;
+  v_status text;
   v_invite_token text;
+  v_display_name text;
 begin
   v_user_id := public.require_authenticated_profile_id();
 
   if p_title is null or btrim(p_title) = '' then
     raise exception using
       errcode = '22023',
-      message = 'title is required.';
+      message = 'Roll title is required.';
   end if;
 
-  if p_type is null or btrim(p_type) = '' then
+  if p_type not in ('PERSONAL', 'SHARED') then
     raise exception using
       errcode = '22023',
-      message = 'type is required.';
+      message = 'Roll type must be PERSONAL or SHARED.';
   end if;
 
-  if p_film_stock_id is null or btrim(p_film_stock_id) = '' then
+  if not public.is_valid_film_stock_id(p_film_stock_id) then
     raise exception using
       errcode = '22023',
-      message = 'film_stock_id is required.';
-  end if;
-
-  v_roll_type := upper(btrim(p_type));
-
-  if v_roll_type not in ('PERSONAL', 'SHARED') then
-    raise exception using
-      errcode = '22023',
-      message = 'type must be PERSONAL or SHARED.';
+      message = 'film_stock_id is invalid.';
   end if;
 
   if p_exposures_per_participant is null
@@ -69,24 +61,23 @@ begin
       message = 'participant_cap must be between 1 and 10.';
   end if;
 
-  if v_roll_type = 'SHARED' then
-    perform 1
+  if p_type = 'SHARED' then
+    select display_name
+    into v_display_name
     from public.profiles
-    where id = v_user_id
-      and display_name is not null;
+    where id = v_user_id;
 
-    if not found then
+    if v_display_name is null or btrim(v_display_name) = '' then
       raise exception using
         errcode = 'P0001',
-        message = 'Shared rolls require a display name. Configure your profile before participating in shared rolls.';
+        message = 'A display name must be configured before participating in shared rolls.';
     end if;
   end if;
 
-  if v_roll_type = 'PERSONAL' then
-    v_roll_status := 'DRAFT';
-  else
-    v_roll_status := 'WAITING_FOR_PARTICIPANTS';
-  end if;
+  v_status := case
+    when p_type = 'SHARED' then 'WAITING_FOR_PARTICIPANTS'
+    else 'DRAFT'
+  end;
 
   insert into public.rolls (
     creator_id,
@@ -100,9 +91,9 @@ begin
   values (
     v_user_id,
     btrim(p_title),
-    v_roll_type,
-    v_roll_status,
-    btrim(p_film_stock_id),
+    p_type,
+    v_status,
+    p_film_stock_id,
     p_exposures_per_participant,
     p_participant_cap
   )
@@ -119,31 +110,39 @@ begin
     'JOINED'
   );
 
-  if v_roll_type = 'SHARED' then
-    v_invite_token := encode(gen_random_bytes(16), 'hex');
+  if p_type = 'SHARED' then
+    loop
+      v_invite_token := public.generate_secure_token();
 
-    insert into public.invites (
-      roll_id,
-      token,
-      is_active
-    )
-    values (
-      v_roll_id,
-      v_invite_token,
-      true
-    );
-  else
-    v_invite_token := null;
+      begin
+        insert into public.invites (
+          roll_id,
+          token,
+          created_by,
+          is_active
+        )
+        values (
+          v_roll_id,
+          v_invite_token,
+          v_user_id,
+          true
+        );
+
+        exit;
+      exception
+        when unique_violation then
+          null;
+      end;
+    end loop;
   end if;
 
-  roll_id := v_roll_id;
-  invite_token := v_invite_token;
-  return next;
+  return query
+  select v_roll_id, v_invite_token;
 end;
 $$;
 
 create or replace function public.start_roll(p_roll_id uuid)
-returns void
+returns integer
 language plpgsql
 security definer
 set search_path = public, auth, extensions
@@ -152,6 +151,7 @@ declare
   v_user_id uuid;
   v_roll public.rolls%rowtype;
   v_participant_count integer;
+  v_exposures_created integer;
 begin
   v_user_id := public.require_authenticated_profile_id();
 
@@ -179,18 +179,19 @@ begin
       message = 'Only the roll creator can start the roll.';
   end if;
 
-  if v_roll.type = 'PERSONAL' then
-    if v_roll.status <> 'DRAFT' then
-      raise exception using
-        errcode = '55000',
-        message = 'Personal rolls can only be started from DRAFT.';
-    end if;
-  else
-    if v_roll.status <> 'WAITING_FOR_PARTICIPANTS' then
-      raise exception using
-        errcode = '55000',
-        message = 'Shared rolls can only be started from WAITING_FOR_PARTICIPANTS.';
-    end if;
+  if not (
+    (v_roll.type = 'SHARED' and v_roll.status = 'WAITING_FOR_PARTICIPANTS')
+    or (v_roll.type = 'PERSONAL' and v_roll.status = 'DRAFT')
+  ) then
+    raise exception using
+      errcode = '55000',
+      message = 'This roll is not in a startable state.';
+  end if;
+
+  if not public.is_valid_film_stock_id(v_roll.film_stock_id) then
+    raise exception using
+      errcode = '22023',
+      message = 'The roll has an invalid film_stock_id.';
   end if;
 
   if v_roll.exposures_per_participant < 1 or v_roll.exposures_per_participant > 36 then
@@ -210,16 +211,16 @@ begin
   from public.roll_participants
   where roll_id = v_roll.id;
 
-  if v_participant_count = 0 then
+  if v_participant_count < 1 then
     raise exception using
-      errcode = '55000',
+      errcode = 'P0001',
       message = 'A roll must have at least one participant before it can start.';
   end if;
 
   if v_participant_count > v_roll.participant_cap then
     raise exception using
-      errcode = '55000',
-      message = 'The current participant count exceeds participant_cap.';
+      errcode = 'P0001',
+      message = 'The roll has more participants than its participant cap allows.';
   end if;
 
   if exists (
@@ -232,6 +233,12 @@ begin
       message = 'Exposure slots have already been created for this roll.';
   end if;
 
+  update public.roll_participants
+  set
+    status = 'SHOOTING',
+    finished_at = null
+  where roll_id = v_roll.id;
+
   insert into public.exposures (
     roll_id,
     participant_id,
@@ -242,22 +249,21 @@ begin
     v_roll.id,
     rp.id,
     gs.exposure_number,
-    gen_random_uuid()::text
+    public.generate_render_seed()
   from public.roll_participants rp
   cross join generate_series(1, v_roll.exposures_per_participant) as gs(exposure_number)
   where rp.roll_id = v_roll.id;
 
-  update public.roll_participants
-  set
-    status = 'SHOOTING',
-    finished_at = null
-  where roll_id = v_roll.id;
+  get diagnostics v_exposures_created = row_count;
 
   update public.rolls
   set
     status = 'SHOOTING',
-    started_at = now(),
-    updated_at = now()
+    started_at = timezone('utc', now()),
+    ready_to_reveal_at = null,
+    revealed_at = null
   where id = v_roll.id;
+
+  return v_exposures_created;
 end;
 $$;
