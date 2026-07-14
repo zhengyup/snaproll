@@ -6,6 +6,7 @@ import SwiftData
 @Model
 final class LocalExposure {
     @Attribute(.unique) var id: UUID
+    var owner_user_id: UUID?
     var roll_id: UUID
     var participant_id: UUID
     var exposure_number: Int
@@ -23,10 +24,14 @@ final class LocalExposure {
     var last_recovery_reason: String?
     var last_recovery_error: String?
     var last_recovered_at: Date?
+    var last_reconciliation_rule: String?
+    var last_reconciliation_error: String?
+    var last_reconciled_at: Date?
     var updated_at: Date
 
     init(
         id: UUID,
+        owner_user_id: UUID? = nil,
         roll_id: UUID,
         participant_id: UUID,
         exposure_number: Int,
@@ -44,9 +49,13 @@ final class LocalExposure {
         last_recovery_reason: String? = nil,
         last_recovery_error: String? = nil,
         last_recovered_at: Date? = nil,
+        last_reconciliation_rule: String? = nil,
+        last_reconciliation_error: String? = nil,
+        last_reconciled_at: Date? = nil,
         updated_at: Date
     ) {
         self.id = id
+        self.owner_user_id = owner_user_id
         self.roll_id = roll_id
         self.participant_id = participant_id
         self.exposure_number = exposure_number
@@ -64,6 +73,9 @@ final class LocalExposure {
         self.last_recovery_reason = last_recovery_reason
         self.last_recovery_error = last_recovery_error
         self.last_recovered_at = last_recovered_at
+        self.last_reconciliation_rule = last_reconciliation_rule
+        self.last_reconciliation_error = last_reconciliation_error
+        self.last_reconciled_at = last_reconciled_at
         self.updated_at = updated_at
     }
 
@@ -91,6 +103,7 @@ final class LocalExposure {
 #else
 final class LocalExposure {
     var id: UUID
+    var owner_user_id: UUID?
     var roll_id: UUID
     var participant_id: UUID
     var exposure_number: Int
@@ -108,10 +121,14 @@ final class LocalExposure {
     var last_recovery_reason: String?
     var last_recovery_error: String?
     var last_recovered_at: Date?
+    var last_reconciliation_rule: String?
+    var last_reconciliation_error: String?
+    var last_reconciled_at: Date?
     var updated_at: Date
 
     init(
         id: UUID,
+        owner_user_id: UUID? = nil,
         roll_id: UUID,
         participant_id: UUID,
         exposure_number: Int,
@@ -129,9 +146,13 @@ final class LocalExposure {
         last_recovery_reason: String? = nil,
         last_recovery_error: String? = nil,
         last_recovered_at: Date? = nil,
+        last_reconciliation_rule: String? = nil,
+        last_reconciliation_error: String? = nil,
+        last_reconciled_at: Date? = nil,
         updated_at: Date
     ) {
         self.id = id
+        self.owner_user_id = owner_user_id
         self.roll_id = roll_id
         self.participant_id = participant_id
         self.exposure_number = exposure_number
@@ -149,6 +170,9 @@ final class LocalExposure {
         self.last_recovery_reason = last_recovery_reason
         self.last_recovery_error = last_recovery_error
         self.last_recovered_at = last_recovered_at
+        self.last_reconciliation_rule = last_reconciliation_rule
+        self.last_reconciliation_error = last_reconciliation_error
+        self.last_reconciled_at = last_reconciled_at
         self.updated_at = updated_at
     }
 

@@ -19,6 +19,7 @@ final class V2PendingExposureRecoveryCoordinator: PendingExposureRecovering {
     private let participantRepository: any ParticipantRepository
     private let exposureMirrorStore: any ExposureMirrorStore
     private let syncRunner: any ExposureSyncRunning
+    private let reconciler: (any ExposureReconciling)?
     private let logger: Logger
     private var activeRecoveryRollIDs: Set<UUID> = []
 
@@ -28,6 +29,7 @@ final class V2PendingExposureRecoveryCoordinator: PendingExposureRecovering {
         participantRepository: any ParticipantRepository,
         exposureMirrorStore: any ExposureMirrorStore,
         syncRunner: any ExposureSyncRunning,
+        reconciler: (any ExposureReconciling)? = nil,
         logger: Logger = Logger(
             subsystem: Bundle.main.bundleIdentifier ?? "com.pzy.snaproll",
             category: "V2PendingRecovery"
@@ -38,6 +40,7 @@ final class V2PendingExposureRecoveryCoordinator: PendingExposureRecovering {
         self.participantRepository = participantRepository
         self.exposureMirrorStore = exposureMirrorStore
         self.syncRunner = syncRunner
+        self.reconciler = reconciler
         self.logger = logger
     }
 
@@ -87,6 +90,8 @@ final class V2PendingExposureRecoveryCoordinator: PendingExposureRecovering {
         defer { activeRecoveryRollIDs.remove(rollID) }
 
         do {
+            await reconciler?.reconcileRoll(id: rollID)
+
             let allExposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
             let scopedExposures = allExposures
                 .filter { exposure in

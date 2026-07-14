@@ -482,6 +482,13 @@ struct V2PersonalRollDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
 
+                        if let ownerUserID = row.ownerUserID {
+                            Text("Owner: \(ownerUserID.uuidString)")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.white.opacity(0.58))
+                                .textSelection(.enabled)
+                        }
+
                         Text(row.localFileExists ? "Local file exists" : "No local file")
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
@@ -557,6 +564,24 @@ struct V2PersonalRollDetailView: View {
 
                         if let recoveryError = row.recoveryError {
                             Text("Recovery error: \(recoveryError)")
+                                .font(.caption2)
+                                .foregroundStyle(.red.opacity(0.82))
+                        }
+
+                        if let reconciliationRule = row.reconciliationRule {
+                            Text("Reconciled: \(reconciliationRule)")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        if let lastReconciledAt = row.lastReconciledAt {
+                            Text("Last reconciliation: \(lastReconciledAt.formatted(date: .abbreviated, time: .standard))")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        if let reconciliationError = row.reconciliationError {
+                            Text("Reconciliation error: \(reconciliationError)")
                                 .font(.caption2)
                                 .foregroundStyle(.red.opacity(0.82))
                         }

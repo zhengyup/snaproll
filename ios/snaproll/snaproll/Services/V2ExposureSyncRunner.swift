@@ -39,6 +39,7 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
     private let exposureMirrorStore: any ExposureMirrorStore
     private let uploadStage: any ExposureUploadStageSyncing
     private let metadataStage: any ExposureMetadataStageSyncing
+    private let authRepository: (any AuthRepository)?
     private let maxAttemptsPerExposure: Int
     private let retryDelayNanoseconds: UInt64
     private var isProcessing = false
@@ -48,12 +49,14 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
         exposureMirrorStore: any ExposureMirrorStore,
         uploadStage: any ExposureUploadStageSyncing,
         metadataStage: any ExposureMetadataStageSyncing,
+        authRepository: (any AuthRepository)? = nil,
         maxAttemptsPerExposure: Int = 2,
         retryDelayNanoseconds: UInt64 = 250_000_000
     ) {
         self.exposureMirrorStore = exposureMirrorStore
         self.uploadStage = uploadStage
         self.metadataStage = metadataStage
+        self.authRepository = authRepository
         self.maxAttemptsPerExposure = max(maxAttemptsPerExposure, 1)
         self.retryDelayNanoseconds = retryDelayNanoseconds
     }
@@ -80,6 +83,7 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
         isProcessing = true
         defer { isProcessing = false }
 
+        let currentUserID = try await authRepository?.currentUserID()
         let exposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
             .filter { exposure in
                 guard let participantID else {
@@ -87,6 +91,13 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
                 }
 
                 return exposure.participant_id == participantID
+            }
+            .filter { exposure in
+                guard let ownerUserID = exposure.owner_user_id, let currentUserID else {
+                    return true
+                }
+
+                return ownerUserID == currentUserID
             }
             .sorted { $0.exposure_number < $1.exposure_number }
 

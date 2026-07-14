@@ -2350,3 +2350,123 @@ Supporting V2 domain types:
 - The repository still does not contain `v2-docs/phase-14-failure-recovery-context.md`; implementation followed `ARCHITECTURE.md`, the attached Phase 14B brief, and the current Phase 14A code.
 - Duplicate triggers are skipped rather than queued for an automatic follow-up pass. Later lifecycle triggers or manual retry can start another pass after the current one finishes.
 - This phase intentionally avoids parallel upload workers, background execution, long-term retry scheduling, and broad local/cloud reconciliation.
+
+## Phase 14C – Local/Cloud Reconciliation and Identity Safety
+
+### Files changed
+
+- `ios/snaproll/snaproll/Models/V2/LocalExposure.swift`
+- `ios/snaproll/snaproll/Repositories/V2LocalExposureMirrorStore.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureReconciliationCoordinator.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureSyncRunner.swift`
+- `ios/snaproll/snaproll/Services/V2PendingExposureRecoveryCoordinator.swift`
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+- `ios/snaproll/snaprollTests/V2ExposureReconciliationCoordinatorTests.swift`
+- `v2-docs/implementation-log.md`
+
+### Reconciliation entry points
+
+- Added `ExposureReconciling` as the repository/service boundary for local/cloud reconciliation.
+- Added `V2ExposureReconciliationCoordinator` to compare cloud exposure state against the local exposure mirror.
+- The live V2 dependency container now creates one reconciliation coordinator and injects it into pending-work recovery.
+- Restart recovery now reconciles the roll before deciding which pending local work to resume.
+- This phase does not add destructive repair, cloud image download, or background reconciliation.
+
+### Field authority
+
+- Cloud remains authoritative for:
+  - exposure slot existence
+  - `storage_path` / `cloud_storage_path`
+  - `uploaded_at`
+  - render seed
+  - participant ownership
+  - roll and participant lifecycle state fetched through repositories
+- The device remains authoritative for:
+  - `local_original_path`
+  - `upload_jpeg_path`
+  - `rendered_cache_path`
+  - pending local workflow state
+  - local diagnostics and retry metadata
+- Reconciliation never deletes local originals, upload copies, rendered cache files, or cloud metadata.
+
+### Local exposure metadata
+
+- `LocalExposure` now stores:
+  - `owner_user_id`
+  - `last_reconciliation_rule`
+  - `last_reconciliation_error`
+  - `last_reconciled_at`
+- The file-backed local exposure mirror persists these fields.
+- Development diagnostics now show owner and reconciliation details when development visibility is enabled.
+
+### Exposure reconciliation matrix
+
+- Local `METADATA_PENDING` + cloud filled with the same canonical path:
+  - mark local exposure `SYNCED`
+  - clear local sync error
+- Local `FAILED` with a cloud path + cloud filled with the same canonical path:
+  - mark local exposure `SYNCED`
+  - clear local sync error
+- Local `LOCAL_ONLY` or `UPLOADING` + cloud empty:
+  - normalize to `LOCAL_ONLY`
+  - keep it retryable
+- Local `METADATA_PENDING` + cloud empty:
+  - keep `METADATA_PENDING`
+  - retry metadata completion later
+- Local `SYNCED` + cloud empty:
+  - mark `FAILED`
+  - record an unresolved consistency error
+- Local and cloud both have non-null but different storage paths:
+  - mark `FAILED`
+  - record a hard `PATH_MISMATCH`
+- Cloud exposure exists but local mirror is missing:
+  - recreate a local mirror from cloud metadata
+  - preserve participant ownership
+- Local original is missing:
+  - do not crash
+  - do not delete cloud metadata
+  - record a reconciliation diagnostic
+
+### Identity safety
+
+- Reconciled local exposure rows are stamped with `owner_user_id` from the participant record.
+- `V2ExposureSyncRunner` now consults `AuthRepository` and skips locally mirrored exposures owned by a different current user.
+- Pending-work recovery already scopes by current participant; reconciliation adds an additional guard for local rows that may survive development identity switching.
+- Existing local rows without `owner_user_id` remain eligible for backward compatibility.
+
+### Testing
+
+- Added tests covering:
+  - metadata-pending exposure becoming synced when cloud confirms the same path
+  - failed exposure with a confirmed cloud path becoming synced
+  - local-only exposure staying retryable when cloud is empty
+  - metadata-pending exposure staying metadata-only when cloud is empty
+  - synced exposure staying consistent when cloud matches
+  - synced local exposure becoming failed when cloud is empty
+  - non-null path mismatch becoming a hard failure
+  - cloud exposure recreating a missing local mirror
+  - missing local original preserving metadata and recording diagnostics
+  - sync runner skipping exposure rows owned by a different development identity
+
+### Build and test commands
+
+- Focused tests:
+  - `xcodebuild -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17 Pro' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase14c-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2ExposureReconciliationCoordinatorTests -only-testing:snaprollTests/V2ExposureSyncRunnerTests -only-testing:snaprollTests/V2PendingExposureRecoveryCoordinatorTests test`
+- Full build:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase14c-build CODE_SIGNING_ALLOWED=NO build`
+
+### Results
+
+- Focused Phase 14 recovery, reconciliation, and sync-runner tests passed.
+- Full iOS project build passed.
+- The full build emitted existing warnings around camera orientation APIs and V2 Supabase configuration actor isolation; these were not introduced by Phase 14C.
+
+### Assumptions and follow-up work
+
+- The repository still does not contain `v2-docs/phase-14-failure-recovery-context.md`; implementation followed `ARCHITECTURE.md`, the attached Phase 14C brief, and the current Phase 14A/14B code.
+- This phase intentionally does not download missing cloud originals back to the device.
+- This phase intentionally does not perform destructive local cleanup for orphaned files.
+- Broader conflict resolution UI, repair tooling, background reconciliation, and cloud-original fallback remain future hardening work.

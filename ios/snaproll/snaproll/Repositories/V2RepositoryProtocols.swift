@@ -74,6 +74,12 @@ protocol PendingExposureRecovering: AnyObject {
     func recoverPendingWork(forRollID rollID: UUID) async
 }
 
+@MainActor
+protocol ExposureReconciling: AnyObject {
+    func reconcileCurrentSession() async
+    func reconcileRoll(id rollID: UUID) async
+}
+
 protocol InviteRepository: Sendable {
     func fetchInvite(forRollID rollID: UUID) async throws -> LocalInvite?
     func fetchInvite(token: String) async throws -> LocalInvite?

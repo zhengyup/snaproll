@@ -25,6 +25,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
 
     struct DiagnosticsRow: Identifiable, Equatable {
         let id: UUID
+        let ownerUserID: UUID?
         let exposureNumber: Int
         let syncState: V2Domain.ExposureSyncState
         let renderSeed: String
@@ -41,6 +42,9 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let recoveryReason: String?
         let recoveryError: String?
         let lastRecoveredAt: Date?
+        let reconciliationRule: String?
+        let reconciliationError: String?
+        let lastReconciledAt: Date?
     }
 
     struct ParticipantProgressRow: Identifiable, Equatable {
@@ -236,6 +240,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         return mirroredExposures.map { exposure in
             DiagnosticsRow(
                 id: exposure.id,
+                ownerUserID: exposure.owner_user_id,
                 exposureNumber: exposure.exposure_number,
                 syncState: exposure.sync_state,
                 renderSeed: exposure.render_seed,
@@ -251,7 +256,10 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
                 recoveryToState: exposure.last_recovery_to_state,
                 recoveryReason: exposure.last_recovery_reason,
                 recoveryError: exposure.last_recovery_error,
-                lastRecoveredAt: exposure.last_recovered_at
+                lastRecoveredAt: exposure.last_recovered_at,
+                reconciliationRule: exposure.last_reconciliation_rule,
+                reconciliationError: exposure.last_reconciliation_error,
+                lastReconciledAt: exposure.last_reconciled_at
             )
         }
     }

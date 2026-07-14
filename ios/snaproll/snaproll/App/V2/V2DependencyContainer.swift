@@ -10,6 +10,7 @@ struct V2DependencyContainer {
     let inviteRepository: any InviteRepository
     let photoStorageService: PhotoStorageService
     let exposureSyncRunner: any ExposureSyncRunning
+    let exposureReconciliationCoordinator: any ExposureReconciling
     let pendingExposureRecoveryCoordinator: any PendingExposureRecovering
 
     static func live(
@@ -48,14 +49,24 @@ struct V2DependencyContainer {
         let exposureSyncRunner = V2ExposureSyncRunner(
             exposureMirrorStore: exposureMirrorStore,
             uploadStage: uploadPipeline,
-            metadataStage: metadataPipeline
+            metadataStage: metadataPipeline,
+            authRepository: authRepository
+        )
+        let exposureReconciliationCoordinator = V2ExposureReconciliationCoordinator(
+            authRepository: authRepository,
+            rollRepository: rollRepository,
+            participantRepository: participantRepository,
+            exposureRepository: exposureRepository,
+            exposureMirrorStore: exposureMirrorStore,
+            photoStorageService: photoStorageService
         )
         let pendingExposureRecoveryCoordinator = V2PendingExposureRecoveryCoordinator(
             authRepository: authRepository,
             rollRepository: rollRepository,
             participantRepository: participantRepository,
             exposureMirrorStore: exposureMirrorStore,
-            syncRunner: exposureSyncRunner
+            syncRunner: exposureSyncRunner,
+            reconciler: exposureReconciliationCoordinator
         )
 
         return V2DependencyContainer(
@@ -68,6 +79,7 @@ struct V2DependencyContainer {
             inviteRepository: SupabaseInviteRepository(clientProvider: clientProvider),
             photoStorageService: photoStorageService,
             exposureSyncRunner: exposureSyncRunner,
+            exposureReconciliationCoordinator: exposureReconciliationCoordinator,
             pendingExposureRecoveryCoordinator: pendingExposureRecoveryCoordinator
         )
     }

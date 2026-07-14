@@ -2,6 +2,7 @@ import Foundation
 
 private struct LocalExposureSnapshot: Codable, Sendable {
     let id: UUID
+    let ownerUserID: UUID?
     let rollID: UUID
     let participantID: UUID
     let exposureNumber: Int
@@ -19,10 +20,14 @@ private struct LocalExposureSnapshot: Codable, Sendable {
     let lastRecoveryReason: String?
     let lastRecoveryError: String?
     let lastRecoveredAt: Date?
+    let lastReconciliationRule: String?
+    let lastReconciliationError: String?
+    let lastReconciledAt: Date?
     let updatedAt: Date
 
     init(
         id: UUID,
+        ownerUserID: UUID?,
         rollID: UUID,
         participantID: UUID,
         exposureNumber: Int,
@@ -40,9 +45,13 @@ private struct LocalExposureSnapshot: Codable, Sendable {
         lastRecoveryReason: String?,
         lastRecoveryError: String?,
         lastRecoveredAt: Date?,
+        lastReconciliationRule: String?,
+        lastReconciliationError: String?,
+        lastReconciledAt: Date?,
         updatedAt: Date
     ) {
         self.id = id
+        self.ownerUserID = ownerUserID
         self.rollID = rollID
         self.participantID = participantID
         self.exposureNumber = exposureNumber
@@ -60,11 +69,15 @@ private struct LocalExposureSnapshot: Codable, Sendable {
         self.lastRecoveryReason = lastRecoveryReason
         self.lastRecoveryError = lastRecoveryError
         self.lastRecoveredAt = lastRecoveredAt
+        self.lastReconciliationRule = lastReconciliationRule
+        self.lastReconciliationError = lastReconciliationError
+        self.lastReconciledAt = lastReconciledAt
         self.updatedAt = updatedAt
     }
 
     init(exposure: LocalExposure) {
         self.id = exposure.id
+        self.ownerUserID = exposure.owner_user_id
         self.rollID = exposure.roll_id
         self.participantID = exposure.participant_id
         self.exposureNumber = exposure.exposure_number
@@ -82,12 +95,16 @@ private struct LocalExposureSnapshot: Codable, Sendable {
         self.lastRecoveryReason = exposure.last_recovery_reason
         self.lastRecoveryError = exposure.last_recovery_error
         self.lastRecoveredAt = exposure.last_recovered_at
+        self.lastReconciliationRule = exposure.last_reconciliation_rule
+        self.lastReconciliationError = exposure.last_reconciliation_error
+        self.lastReconciledAt = exposure.last_reconciled_at
         self.updatedAt = exposure.updated_at
     }
 
     func toLocalExposure() -> LocalExposure {
         LocalExposure(
             id: id,
+            owner_user_id: ownerUserID,
             roll_id: rollID,
             participant_id: participantID,
             exposure_number: exposureNumber,
@@ -105,6 +122,9 @@ private struct LocalExposureSnapshot: Codable, Sendable {
             last_recovery_reason: lastRecoveryReason,
             last_recovery_error: lastRecoveryError,
             last_recovered_at: lastRecoveredAt,
+            last_reconciliation_rule: lastReconciliationRule,
+            last_reconciliation_error: lastReconciliationError,
+            last_reconciled_at: lastReconciledAt,
             updated_at: updatedAt
         )
     }
@@ -192,6 +212,7 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
         }
 
         let id = exposure.id
+        let ownerUserID = existing?.ownerUserID
         let rollID = exposure.roll_id
         let participantID = exposure.participant_id
         let exposureNumber = exposure.exposure_number
@@ -206,9 +227,13 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
         let lastRecoveryReason = existing?.lastRecoveryReason
         let lastRecoveryError = existing?.lastRecoveryError
         let lastRecoveredAt = existing?.lastRecoveredAt
+        let lastReconciliationRule = existing?.lastReconciliationRule
+        let lastReconciliationError = existing?.lastReconciliationError
+        let lastReconciledAt = existing?.lastReconciledAt
 
         return LocalExposureSnapshot(
             id: id,
+            ownerUserID: ownerUserID,
             rollID: rollID,
             participantID: participantID,
             exposureNumber: exposureNumber,
@@ -226,6 +251,9 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
             lastRecoveryReason: lastRecoveryReason,
             lastRecoveryError: lastRecoveryError,
             lastRecoveredAt: lastRecoveredAt,
+            lastReconciliationRule: lastReconciliationRule,
+            lastReconciliationError: lastReconciliationError,
+            lastReconciledAt: lastReconciledAt,
             updatedAt: updatedAt
         )
     }
