@@ -2139,3 +2139,214 @@ Supporting V2 domain types:
 - The repository did not contain the exact `phase-13-shared-state-synchronization-context.md` filename referenced in the task prompt, so implementation followed `v2-docs/ARCHITECTURE.md` and the current shared-roll V2 code paths as the source of truth.
 - Manual refresh remains available, but shared state no longer depends on it for normal collaborative lifecycle transitions.
 - Polling is intentionally isolated behind `V2SharedStateSynchronizer` so Supabase Realtime can replace the transport later without rewriting view models or screen logic.
+
+## Phase 14A – Durable Pending Work & Restart Recovery
+
+### Files changed
+
+- `ios/snaproll/snaproll/Models/V2/LocalExposure.swift`
+- `ios/snaproll/snaproll/Repositories/V2LocalExposureMirrorStore.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+- `ios/snaproll/snaproll/Services/V2PendingExposureRecoveryCoordinator.swift`
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/App/V2/V2CloudHomeView.swift`
+- `ios/snaproll/snaproll/App/V2/V2PersonalRollDetailView.swift`
+- `ios/snaproll/snaproll/ViewModels/V2PersonalRollDetailViewModel.swift`
+- `ios/snaproll/snaprollTests/V2PendingExposureRecoveryCoordinatorTests.swift`
+
+### Recovery normalization rules
+
+- Recovery is now driven entirely from persisted `LocalExposure` records rather than any in-memory queue.
+- On recovery:
+  - `LOCAL_ONLY` stays `LOCAL_ONLY` and remains eligible for upload.
+  - `UPLOADING` is normalized back to `LOCAL_ONLY` because an upload cannot still be in progress after process restart.
+  - `METADATA_PENDING` stays `METADATA_PENDING` and resumes metadata completion only.
+  - `FAILED` resumes from the correct stage by deriving failure stage from persisted state:
+    - if `cloud_storage_path` exists, the upload already succeeded and recovery resumes metadata completion only
+    - if `cloud_storage_path` is empty, recovery resumes upload
+  - `EMPTY` and `SYNCED` are ignored.
+
+### Recovery triggers
+
+- Added a dedicated `V2PendingExposureRecoveryCoordinator`.
+- Recovery now runs at these V2 lifecycle points:
+  - after the V2 app enters a signed-in cloud session
+  - when the V2 app returns to foreground
+  - when a V2 personal or shared roll detail screen opens
+- The coordinator keeps per-roll in-process tracking so the same roll is not obviously recovered twice at the same time during this phase.
+
+### How failure stage is preserved or derived
+
+- No new backend state was introduced for failure-stage recovery.
+- The existing local model already preserves enough information:
+  - `cloud_storage_path` means the Storage upload completed
+  - absence of `cloud_storage_path` means the failure happened before upload completion
+- To make recovery observable in development mode, `LocalExposure` now persists:
+  - `last_recovery_from_state`
+  - `last_recovery_to_state`
+  - `last_recovery_reason`
+  - `last_recovery_error`
+  - `last_recovered_at`
+
+### Development diagnostics
+
+- V2 roll diagnostics now show recovery details in development mode, including:
+  - state before normalization
+  - recovered state
+  - recovery reason
+  - last recovery time
+  - recovery errors
+- These diagnostics remain hidden in normal user mode.
+
+### Testing
+
+- Added focused unit coverage for:
+  - `LOCAL_ONLY` restart recovery
+  - `UPLOADING` normalization
+  - `METADATA_PENDING` resuming metadata only
+  - failed upload-stage recovery
+  - failed metadata-stage recovery
+  - `SYNCED` and `EMPTY` no-op behavior
+  - persisted file-backed recovery after restart
+  - current-user and roll scoping
+  - preservation of local originals and uploaded-path metadata on recovery failure
+
+### Manual validation
+
+- Code-level recovery hooks were added for the Phase 14A restart scenarios, but manual device validation was not performed in this implementation pass.
+- Recommended manual validation:
+  - create and start a V2 roll
+  - capture into `LOCAL_ONLY`
+  - terminate and relaunch
+  - confirm recovery resumes upload
+  - stop after upload reaches `METADATA_PENDING`
+  - relaunch and confirm recovery resumes metadata completion without re-uploading
+
+### Build and test commands
+
+- Full build:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase14a-build CODE_SIGNING_ALLOWED=NO build`
+- Focused tests:
+  - `xcodebuild -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17 Pro' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase14a-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2PendingExposureRecoveryCoordinatorTests -only-testing:snaprollTests/V2ExposureSyncRunnerTests -only-testing:snaprollTests/V2PersonalRollDetailViewModelTests test`
+
+### Results
+
+- Full iOS project build passed.
+- Focused recovery-related tests were added and executed against the simulator target in this phase.
+
+### Assumptions and follow-up work for Phases 14B–14D
+
+- Phase 14A intentionally avoids broader duplicate-trigger hardening beyond per-roll in-process guarding during a single app lifetime.
+- Backoff, scheduled retries, and broader local/cloud reconciliation remain deferred to later failure-recovery phases.
+- Identity-switch hardening is only basic in this phase: recovery is scoped to the current session user and relevant participant/roll, but more defensive handling for rapid identity changes belongs in Phase 14D.
+
+## Phase 14B – Single-Runner Retry and Idempotent Sync
+
+### Files changed
+
+- `ios/snaproll/snaproll/Services/V2ExposureSyncRunner.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureUploadPipeline.swift`
+- `ios/snaproll/snaproll/Services/V2ExposureMetadataCompletionPipeline.swift`
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaprollTests/V2ExposureSyncRunnerTests.swift`
+- `ios/snaproll/snaprollTests/V2ExposureUploadPipelineTests.swift`
+- `supabase/migrations/20260714090000_phase_14b_idempotent_complete_exposure.sql`
+- `supabase/tests/rpc_complete_exposure_idempotency.sql`
+- `v2-docs/implementation-log.md`
+
+### Single active runner strategy
+
+- The live V2 dependency container continues to create one shared `V2ExposureSyncRunner` instance.
+- `V2ExposureSyncRunner` now enforces one active sync pass at a time across the instance.
+- If another trigger fires while a sync pass is active, the duplicate trigger is skipped and reported in the returned summary instead of starting overlapping work.
+- A later sync request can run normally after the active pass finishes.
+- Exposure processing remains sequential and ordered by `exposure_number`.
+
+### Idempotency rules
+
+- `LOCAL_ONLY` uploads to the canonical path, then proceeds to metadata completion.
+- `METADATA_PENDING` skips upload and retries metadata completion only.
+- `FAILED` with no `cloud_storage_path` retries upload.
+- `FAILED` with a valid `cloud_storage_path` retries metadata completion only.
+- `SYNCED` and `EMPTY` are ignored.
+- If `cloud_storage_path` already exists locally, the upload stage treats upload as completed and moves the exposure back to `METADATA_PENDING` without regenerating or re-uploading the JPEG.
+
+### Storage behavior
+
+- Storage uploads continue to use the canonical path:
+  - `rolls/{roll_id}/participants/{participant_id}/{exposure_number_padded}.jpg`
+- The Supabase Storage implementation now uploads with `upsert: true`.
+- This means a retry after a crash that happened after Storage accepted bytes but before local state saved `cloud_storage_path` writes the same exposure JPEG back to the same canonical object path rather than creating alternate objects.
+- Once `cloud_storage_path` is persisted locally, the app skips upload entirely for that exposure.
+- This phase does not attempt broad object-content reconciliation for already-existing Storage objects; that remains future recovery hardening.
+
+### complete_exposure() idempotency
+
+- Added migration `20260714090000_phase_14b_idempotent_complete_exposure.sql`.
+- `complete_exposure()` now behaves as:
+  - empty exposure + expected canonical path: complete the exposure and return success
+  - already completed exposure + same canonical path: return success
+  - already completed exposure + different path: reject clearly
+- The function still validates ownership and canonical path layout.
+- Repeated successful calls no longer corrupt participant or roll lifecycle state.
+
+### Bounded retry policy
+
+- The sync runner now retries each exposure a small bounded number of times within one sync pass.
+- Default attempts per exposure: `2`.
+- Default delay between attempts: `250ms`.
+- Tests use a zero retry delay for deterministic execution.
+- After retries are exhausted:
+  - the exposure is marked `FAILED`
+  - `last_error` is persisted
+  - local original paths are preserved
+  - valid `cloud_storage_path` values are preserved
+  - later exposures continue to process sequentially
+
+### Testing
+
+- Added or updated tests covering:
+  - overlapping sync requests produce only one active pass
+  - later sync requests can run after the first pass finishes
+  - exposure processing order is sequential by exposure number
+  - `LOCAL_ONLY` upload retry
+  - `METADATA_PENDING` skipping upload
+  - `FAILED` with and without `cloud_storage_path`
+  - bounded retry success and retry exhaustion
+  - `SYNCED` and `EMPTY` no-op behavior
+  - existing canonical Storage object retry behavior
+  - Phase 14A recovered work flowing through the same runner
+- Added SQL smoke test:
+  - `supabase/tests/rpc_complete_exposure_idempotency.sql`
+
+### Manual validation
+
+- Manual device validation was not performed in this implementation pass.
+- Recommended manual validation:
+  - capture multiple V2 exposures
+  - trigger sync from roll open, foreground, and manual retry close together
+  - confirm only one sync pass runs at a time in diagnostics
+  - confirm Storage receives only canonical paths
+  - force `METADATA_PENDING` and retry metadata completion without upload
+  - run the SQL smoke test against a disposable Supabase project after applying the migration
+
+### Build and test commands
+
+- Focused tests:
+  - `xcodebuild -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17 Pro' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase14b-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/V2ExposureSyncRunnerTests -only-testing:snaprollTests/V2ExposureUploadPipelineTests -only-testing:snaprollTests/V2ExposureMetadataCompletionPipelineTests -only-testing:snaprollTests/V2PendingExposureRecoveryCoordinatorTests test`
+- Full build:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase14b-build CODE_SIGNING_ALLOWED=NO build`
+- SQL smoke test:
+  - `supabase/tests/rpc_complete_exposure_idempotency.sql` is intended to be run manually in Supabase SQL Editor after the migration is pushed.
+
+### Results
+
+- Focused iOS sync, upload, metadata, and recovery tests passed.
+- Full iOS project build passed.
+- SQL smoke test was added but not executed locally in this pass because it targets the linked Supabase database.
+
+### Assumptions and remaining Phase 14 work
+
+- The repository still does not contain `v2-docs/phase-14-failure-recovery-context.md`; implementation followed `ARCHITECTURE.md`, the attached Phase 14B brief, and the current Phase 14A code.
+- Duplicate triggers are skipped rather than queued for an automatic follow-up pass. Later lifecycle triggers or manual retry can start another pass after the current one finishes.
+- This phase intentionally avoids parallel upload workers, background execution, long-term retry scheduling, and broad local/cloud reconciliation.

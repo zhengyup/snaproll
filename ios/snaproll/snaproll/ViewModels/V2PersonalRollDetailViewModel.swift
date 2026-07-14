@@ -36,6 +36,11 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         let captureTimestamp: Date?
         let uploadedAt: Date?
         let lastError: String?
+        let recoveryFromState: String?
+        let recoveryToState: String?
+        let recoveryReason: String?
+        let recoveryError: String?
+        let lastRecoveredAt: Date?
     }
 
     struct ParticipantProgressRow: Identifiable, Equatable {
@@ -66,6 +71,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     private let exposureMirrorStore: any ExposureMirrorStore
     private let photoStorageService: PhotoStorageService
     private let syncRunner: (any ExposureSyncRunning)?
+    private let pendingRecoveryCoordinator: (any PendingExposureRecovering)?
     private let diagnosticsEnabled: Bool
     private let activeDevelopmentIdentityLabel: String?
 
@@ -78,6 +84,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         exposureMirrorStore: any ExposureMirrorStore,
         photoStorageService: PhotoStorageService? = nil,
         syncRunner: (any ExposureSyncRunning)? = nil,
+        pendingRecoveryCoordinator: (any PendingExposureRecovering)? = nil,
         diagnosticsEnabled: Bool? = nil,
         activeDevelopmentIdentityLabel: String? = nil
     ) {
@@ -89,6 +96,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         self.exposureMirrorStore = exposureMirrorStore
         self.photoStorageService = photoStorageService ?? PhotoStorageService()
         self.syncRunner = syncRunner
+        self.pendingRecoveryCoordinator = pendingRecoveryCoordinator
         self.diagnosticsEnabled = diagnosticsEnabled ?? AppConfig.V2.isExposureDiagnosticsEnabled
         self.activeDevelopmentIdentityLabel = activeDevelopmentIdentityLabel
     }
@@ -238,7 +246,12 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
                 cloudStoragePath: exposure.cloud_storage_path,
                 captureTimestamp: exposure.captured_at,
                 uploadedAt: exposure.uploaded_at,
-                lastError: exposure.last_error
+                lastError: exposure.last_error,
+                recoveryFromState: exposure.last_recovery_from_state,
+                recoveryToState: exposure.last_recovery_to_state,
+                recoveryReason: exposure.last_recovery_reason,
+                recoveryError: exposure.last_recovery_error,
+                lastRecoveredAt: exposure.last_recovered_at
             )
         }
     }
@@ -336,7 +349,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
 
     func handleAppear() async {
         await load()
-        await synchronizeIfNeeded()
+        await recoverPendingWorkIfNeeded()
     }
 
     func handleCaptureSessionEnded() async {
@@ -345,7 +358,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
     }
 
     func handleSceneBecameActive() async {
-        await synchronizeIfNeeded()
+        await recoverPendingWorkIfNeeded()
     }
 
     func startRoll() async {
@@ -443,6 +456,15 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         }
 
         await runSynchronization()
+    }
+
+    private func recoverPendingWorkIfNeeded() async {
+        if let pendingRecoveryCoordinator {
+            await pendingRecoveryCoordinator.recoverPendingWork(forRollID: rollID)
+            await load()
+        } else {
+            await synchronizeIfNeeded()
+        }
     }
 
     private func runSynchronization() async {

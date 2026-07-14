@@ -70,6 +70,10 @@ final class V2ExposureMetadataCompletionPipeline: ExposureMetadataCompleting, Ex
     }
 
     func processMetadataStage(for exposure: LocalExposure) async throws {
+        guard exposure.sync_state != .synced else {
+            return
+        }
+
         guard let cloudStoragePath = exposure.cloud_storage_path,
               !cloudStoragePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw V2ExposureMetadataCompletionError.missingCloudStoragePath

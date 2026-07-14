@@ -68,6 +68,12 @@ protocol ExposureMirrorStore: AnyObject {
     func saveExposure(_ exposure: LocalExposure) async throws
 }
 
+@MainActor
+protocol PendingExposureRecovering: AnyObject {
+    func recoverPendingWorkForCurrentSession() async
+    func recoverPendingWork(forRollID rollID: UUID) async
+}
+
 protocol InviteRepository: Sendable {
     func fetchInvite(forRollID rollID: UUID) async throws -> LocalInvite?
     func fetchInvite(token: String) async throws -> LocalInvite?

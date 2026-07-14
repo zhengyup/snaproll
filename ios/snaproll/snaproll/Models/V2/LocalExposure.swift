@@ -18,6 +18,11 @@ final class LocalExposure {
     var captured_at: Date?
     var uploaded_at: Date?
     var last_error: String?
+    var last_recovery_from_state: String?
+    var last_recovery_to_state: String?
+    var last_recovery_reason: String?
+    var last_recovery_error: String?
+    var last_recovered_at: Date?
     var updated_at: Date
 
     init(
@@ -34,6 +39,11 @@ final class LocalExposure {
         captured_at: Date? = nil,
         uploaded_at: Date? = nil,
         last_error: String? = nil,
+        last_recovery_from_state: String? = nil,
+        last_recovery_to_state: String? = nil,
+        last_recovery_reason: String? = nil,
+        last_recovery_error: String? = nil,
+        last_recovered_at: Date? = nil,
         updated_at: Date
     ) {
         self.id = id
@@ -49,6 +59,11 @@ final class LocalExposure {
         self.captured_at = captured_at
         self.uploaded_at = uploaded_at
         self.last_error = last_error
+        self.last_recovery_from_state = last_recovery_from_state
+        self.last_recovery_to_state = last_recovery_to_state
+        self.last_recovery_reason = last_recovery_reason
+        self.last_recovery_error = last_recovery_error
+        self.last_recovered_at = last_recovered_at
         self.updated_at = updated_at
     }
 
@@ -88,6 +103,11 @@ final class LocalExposure {
     var captured_at: Date?
     var uploaded_at: Date?
     var last_error: String?
+    var last_recovery_from_state: String?
+    var last_recovery_to_state: String?
+    var last_recovery_reason: String?
+    var last_recovery_error: String?
+    var last_recovered_at: Date?
     var updated_at: Date
 
     init(
@@ -104,6 +124,11 @@ final class LocalExposure {
         captured_at: Date? = nil,
         uploaded_at: Date? = nil,
         last_error: String? = nil,
+        last_recovery_from_state: String? = nil,
+        last_recovery_to_state: String? = nil,
+        last_recovery_reason: String? = nil,
+        last_recovery_error: String? = nil,
+        last_recovered_at: Date? = nil,
         updated_at: Date
     ) {
         self.id = id
@@ -119,6 +144,11 @@ final class LocalExposure {
         self.captured_at = captured_at
         self.uploaded_at = uploaded_at
         self.last_error = last_error
+        self.last_recovery_from_state = last_recovery_from_state
+        self.last_recovery_to_state = last_recovery_to_state
+        self.last_recovery_reason = last_recovery_reason
+        self.last_recovery_error = last_recovery_error
+        self.last_recovered_at = last_recovered_at
         self.updated_at = updated_at
     }
 

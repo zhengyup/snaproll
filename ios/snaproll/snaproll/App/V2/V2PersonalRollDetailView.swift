@@ -14,20 +14,6 @@ struct V2PersonalRollDetailView: View {
         developmentIdentity: DevelopmentAuthIdentity? = nil
     ) {
         self.dependencies = dependencies
-        let uploadPipeline = V2ExposureUploadPipeline(
-            exposureMirrorStore: dependencies.exposureMirrorStore,
-            photoStorageService: dependencies.photoStorageService,
-            storageRepository: dependencies.exposureAssetStorageRepository
-        )
-        let metadataPipeline = V2ExposureMetadataCompletionPipeline(
-            exposureMirrorStore: dependencies.exposureMirrorStore,
-            exposureRepository: dependencies.exposureRepository
-        )
-        let syncRunner = V2ExposureSyncRunner(
-            exposureMirrorStore: dependencies.exposureMirrorStore,
-            uploadStage: uploadPipeline,
-            metadataStage: metadataPipeline
-        )
         let viewModel = V2PersonalRollDetailViewModel(
             rollID: rollID,
             rollRepository: dependencies.rollRepository,
@@ -36,7 +22,8 @@ struct V2PersonalRollDetailView: View {
             exposureRepository: dependencies.exposureRepository,
             exposureMirrorStore: dependencies.exposureMirrorStore,
             photoStorageService: dependencies.photoStorageService,
-            syncRunner: syncRunner,
+            syncRunner: dependencies.exposureSyncRunner,
+            pendingRecoveryCoordinator: dependencies.pendingExposureRecoveryCoordinator,
             activeDevelopmentIdentityLabel: developmentIdentity?.displayName
         )
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -538,8 +525,38 @@ struct V2PersonalRollDetailView: View {
                                 .foregroundStyle(.white.opacity(0.58))
                         }
 
+                        if let recoveryFromState = row.recoveryFromState {
+                            Text("Recovered from: \(recoveryFromState)")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        if let recoveryToState = row.recoveryToState {
+                            Text("Recovered to: \(recoveryToState)")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        if let recoveryReason = row.recoveryReason {
+                            Text(recoveryReason)
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
+                        if let lastRecoveredAt = row.lastRecoveredAt {
+                            Text("Last recovery: \(lastRecoveredAt.formatted(date: .abbreviated, time: .standard))")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+
                         if let lastError = row.lastError {
                             Text(lastError)
+                                .font(.caption2)
+                                .foregroundStyle(.red.opacity(0.82))
+                        }
+
+                        if let recoveryError = row.recoveryError {
+                            Text("Recovery error: \(recoveryError)")
                                 .font(.caption2)
                                 .foregroundStyle(.red.opacity(0.82))
                         }

@@ -4,10 +4,26 @@ struct V2ExposureSyncRunSummary: Sendable, Equatable {
     let processedExposureIDs: [UUID]
     let syncedExposureIDs: [UUID]
     let failedExposureIDs: [UUID]
+    let skippedDuplicateTriggerCount: Int
+    let wasSkippedDueToActiveRun: Bool
 
     var processedCount: Int { processedExposureIDs.count }
     var syncedCount: Int { syncedExposureIDs.count }
     var failedCount: Int { failedExposureIDs.count }
+
+    init(
+        processedExposureIDs: [UUID],
+        syncedExposureIDs: [UUID],
+        failedExposureIDs: [UUID],
+        skippedDuplicateTriggerCount: Int = 0,
+        wasSkippedDueToActiveRun: Bool = false
+    ) {
+        self.processedExposureIDs = processedExposureIDs
+        self.syncedExposureIDs = syncedExposureIDs
+        self.failedExposureIDs = failedExposureIDs
+        self.skippedDuplicateTriggerCount = skippedDuplicateTriggerCount
+        self.wasSkippedDueToActiveRun = wasSkippedDueToActiveRun
+    }
 }
 
 protocol ExposureSyncRunning: Sendable {
@@ -23,16 +39,23 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
     private let exposureMirrorStore: any ExposureMirrorStore
     private let uploadStage: any ExposureUploadStageSyncing
     private let metadataStage: any ExposureMetadataStageSyncing
-    private var activeRollIDs: Set<UUID> = []
+    private let maxAttemptsPerExposure: Int
+    private let retryDelayNanoseconds: UInt64
+    private var isProcessing = false
+    private var skippedDuplicateTriggerCount = 0
 
     init(
         exposureMirrorStore: any ExposureMirrorStore,
         uploadStage: any ExposureUploadStageSyncing,
-        metadataStage: any ExposureMetadataStageSyncing
+        metadataStage: any ExposureMetadataStageSyncing,
+        maxAttemptsPerExposure: Int = 2,
+        retryDelayNanoseconds: UInt64 = 250_000_000
     ) {
         self.exposureMirrorStore = exposureMirrorStore
         self.uploadStage = uploadStage
         self.metadataStage = metadataStage
+        self.maxAttemptsPerExposure = max(maxAttemptsPerExposure, 1)
+        self.retryDelayNanoseconds = retryDelayNanoseconds
     }
 
     func processPendingExposures(forRollID rollID: UUID) async throws -> V2ExposureSyncRunSummary {
@@ -43,16 +66,19 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
         forRollID rollID: UUID,
         participantID: UUID?
     ) async throws -> V2ExposureSyncRunSummary {
-        guard !activeRollIDs.contains(rollID) else {
+        guard !isProcessing else {
+            skippedDuplicateTriggerCount += 1
             return V2ExposureSyncRunSummary(
                 processedExposureIDs: [],
                 syncedExposureIDs: [],
-                failedExposureIDs: []
+                failedExposureIDs: [],
+                skippedDuplicateTriggerCount: skippedDuplicateTriggerCount,
+                wasSkippedDueToActiveRun: true
             )
         }
 
-        activeRollIDs.insert(rollID)
-        defer { activeRollIDs.remove(rollID) }
+        isProcessing = true
+        defer { isProcessing = false }
 
         let exposures = try await exposureMirrorStore.fetchExposures(forRollID: rollID)
             .filter { exposure in
@@ -76,7 +102,7 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
             processedExposureIDs.append(exposure.id)
 
             do {
-                try await process(exposure, forRollID: rollID)
+                try await processWithBoundedRetry(exposure, forRollID: rollID)
                 if exposure.sync_state == .synced {
                     syncedExposureIDs.append(exposure.id)
                 }
@@ -89,7 +115,8 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
         return V2ExposureSyncRunSummary(
             processedExposureIDs: processedExposureIDs,
             syncedExposureIDs: syncedExposureIDs,
-            failedExposureIDs: failedExposureIDs
+            failedExposureIDs: failedExposureIDs,
+            skippedDuplicateTriggerCount: skippedDuplicateTriggerCount
         )
     }
 
@@ -125,6 +152,28 @@ final class V2ExposureSyncRunner: ExposureSyncRunning {
         case .empty, .synced:
             break
         }
+    }
+
+    private func processWithBoundedRetry(_ exposure: LocalExposure, forRollID rollID: UUID) async throws {
+        var lastError: Error?
+
+        for attempt in 1...maxAttemptsPerExposure {
+            do {
+                try await process(exposure, forRollID: rollID)
+                return
+            } catch {
+                lastError = error
+                guard attempt < maxAttemptsPerExposure else {
+                    break
+                }
+
+                if retryDelayNanoseconds > 0 {
+                    try await Task.sleep(nanoseconds: retryDelayNanoseconds)
+                }
+            }
+        }
+
+        throw lastError ?? CancellationError()
     }
 
     private func markFailed(_ exposure: LocalExposure, error: Error) async throws {

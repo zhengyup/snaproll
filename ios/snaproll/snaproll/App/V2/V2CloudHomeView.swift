@@ -4,6 +4,7 @@ import UIKit
 #endif
 
 struct V2CloudHomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var sessionStore: V2SessionStore
     @ObservedObject var developmentAuthSettings: DevelopmentAuthSettings
     @StateObject private var viewModel: V2CloudHomeViewModel
@@ -18,6 +19,7 @@ struct V2CloudHomeView: View {
         self.sessionStore = sessionStore
         self.developmentAuthSettings = developmentAuthSettings
         self.dependencies = dependencies
+        self.pendingRecoveryCoordinator = dependencies.pendingExposureRecoveryCoordinator
         _viewModel = StateObject(
             wrappedValue: V2CloudHomeViewModel(
                 authRepository: dependencies.authRepository,
@@ -28,6 +30,7 @@ struct V2CloudHomeView: View {
     }
 
     private let dependencies: V2DependencyContainer
+    private let pendingRecoveryCoordinator: any PendingExposureRecovering
 
     var body: some View {
         NavigationStack {
@@ -130,15 +133,17 @@ struct V2CloudHomeView: View {
                 }
             }
         }
-        .task {
-            await viewModel.load()
-        }
         .task(id: signedInUserID) {
-            guard signedInUserID != nil else {
+            await handleSessionScopedLoadAndRecovery()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active, signedInUserID != nil else {
                 return
             }
 
-            await viewModel.load()
+            Task {
+                await handleForegroundRecovery()
+            }
         }
         .onDisappear {
             copyToastTask?.cancel()
@@ -151,6 +156,22 @@ struct V2CloudHomeView: View {
         }
 
         return session.userID
+    }
+
+    private func handleSessionScopedLoadAndRecovery() async {
+        await viewModel.load()
+
+        guard signedInUserID != nil else {
+            return
+        }
+
+        await pendingRecoveryCoordinator.recoverPendingWorkForCurrentSession()
+        await viewModel.load()
+    }
+
+    private func handleForegroundRecovery() async {
+        await pendingRecoveryCoordinator.recoverPendingWorkForCurrentSession()
+        await viewModel.load()
     }
 
     private func handleIdentitySelection(_ identity: DevelopmentAuthIdentity) {

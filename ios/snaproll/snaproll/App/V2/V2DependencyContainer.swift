@@ -9,6 +9,8 @@ struct V2DependencyContainer {
     let exposureAssetStorageRepository: any ExposureAssetStorageRepository
     let inviteRepository: any InviteRepository
     let photoStorageService: PhotoStorageService
+    let exposureSyncRunner: any ExposureSyncRunning
+    let pendingExposureRecoveryCoordinator: any PendingExposureRecovering
 
     static func live(
         authenticationMode: V2AuthenticationMode = AppConfig.V2.authenticationMode,
@@ -28,15 +30,45 @@ struct V2DependencyContainer {
             )
         }
 
+        let rollRepository = SupabaseRollRepository(clientProvider: clientProvider)
+        let participantRepository = SupabaseParticipantRepository(clientProvider: clientProvider)
+        let exposureRepository = SupabaseExposureRepository(clientProvider: clientProvider)
+        let exposureMirrorStore = FileBackedExposureMirrorStore()
+        let photoStorageService = PhotoStorageService()
+        let storageRepository = SupabaseExposureAssetStorageRepository(clientProvider: clientProvider)
+        let uploadPipeline = V2ExposureUploadPipeline(
+            exposureMirrorStore: exposureMirrorStore,
+            photoStorageService: photoStorageService,
+            storageRepository: storageRepository
+        )
+        let metadataPipeline = V2ExposureMetadataCompletionPipeline(
+            exposureMirrorStore: exposureMirrorStore,
+            exposureRepository: exposureRepository
+        )
+        let exposureSyncRunner = V2ExposureSyncRunner(
+            exposureMirrorStore: exposureMirrorStore,
+            uploadStage: uploadPipeline,
+            metadataStage: metadataPipeline
+        )
+        let pendingExposureRecoveryCoordinator = V2PendingExposureRecoveryCoordinator(
+            authRepository: authRepository,
+            rollRepository: rollRepository,
+            participantRepository: participantRepository,
+            exposureMirrorStore: exposureMirrorStore,
+            syncRunner: exposureSyncRunner
+        )
+
         return V2DependencyContainer(
             authRepository: authRepository,
-            rollRepository: SupabaseRollRepository(clientProvider: clientProvider),
-            participantRepository: SupabaseParticipantRepository(clientProvider: clientProvider),
-            exposureRepository: SupabaseExposureRepository(clientProvider: clientProvider),
-            exposureMirrorStore: FileBackedExposureMirrorStore(),
-            exposureAssetStorageRepository: SupabaseExposureAssetStorageRepository(clientProvider: clientProvider),
+            rollRepository: rollRepository,
+            participantRepository: participantRepository,
+            exposureRepository: exposureRepository,
+            exposureMirrorStore: exposureMirrorStore,
+            exposureAssetStorageRepository: storageRepository,
             inviteRepository: SupabaseInviteRepository(clientProvider: clientProvider),
-            photoStorageService: PhotoStorageService()
+            photoStorageService: photoStorageService,
+            exposureSyncRunner: exposureSyncRunner,
+            pendingExposureRecoveryCoordinator: pendingExposureRecoveryCoordinator
         )
     }
 }

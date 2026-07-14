@@ -73,6 +73,14 @@ final class V2ExposureUploadPipeline: ExposureUploadSyncing, ExposureUploadStage
     }
 
     func processUploadStage(for exposure: LocalExposure, rollID: UUID) async throws {
+        if hasCloudStoragePath(exposure) {
+            exposure.sync_state = .metadataPending
+            exposure.last_error = nil
+            exposure.updated_at = Date.now
+            try await exposureMirrorStore.saveExposure(exposure)
+            return
+        }
+
         guard let localOriginalPath = exposure.local_original_path,
               photoStorageService.fileExists(at: localOriginalPath) else {
             throw V2ExposureUploadPipelineError.missingLocalOriginal
@@ -111,5 +119,13 @@ final class V2ExposureUploadPipeline: ExposureUploadSyncing, ExposureUploadStage
 
     private func upload(_ exposure: LocalExposure, forRollID rollID: UUID) async throws {
         try await processUploadStage(for: exposure, rollID: rollID)
+    }
+
+    private func hasCloudStoragePath(_ exposure: LocalExposure) -> Bool {
+        guard let cloudStoragePath = exposure.cloud_storage_path else {
+            return false
+        }
+
+        return !cloudStoragePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }

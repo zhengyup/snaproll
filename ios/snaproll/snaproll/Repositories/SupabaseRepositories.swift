@@ -682,7 +682,7 @@ final class SupabaseExposureAssetStorageRepository: ExposureAssetStorageReposito
                     options: FileOptions(
                         cacheControl: "3600",
                         contentType: "image/jpeg",
-                        upsert: false
+                        upsert: true
                     )
                 )
         }

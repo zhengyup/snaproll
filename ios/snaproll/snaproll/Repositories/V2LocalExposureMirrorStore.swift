@@ -14,6 +14,11 @@ private struct LocalExposureSnapshot: Codable, Sendable {
     let capturedAt: Date?
     let uploadedAt: Date?
     let lastError: String?
+    let lastRecoveryFromState: String?
+    let lastRecoveryToState: String?
+    let lastRecoveryReason: String?
+    let lastRecoveryError: String?
+    let lastRecoveredAt: Date?
     let updatedAt: Date
 
     init(
@@ -30,6 +35,11 @@ private struct LocalExposureSnapshot: Codable, Sendable {
         capturedAt: Date?,
         uploadedAt: Date?,
         lastError: String?,
+        lastRecoveryFromState: String?,
+        lastRecoveryToState: String?,
+        lastRecoveryReason: String?,
+        lastRecoveryError: String?,
+        lastRecoveredAt: Date?,
         updatedAt: Date
     ) {
         self.id = id
@@ -45,6 +55,11 @@ private struct LocalExposureSnapshot: Codable, Sendable {
         self.capturedAt = capturedAt
         self.uploadedAt = uploadedAt
         self.lastError = lastError
+        self.lastRecoveryFromState = lastRecoveryFromState
+        self.lastRecoveryToState = lastRecoveryToState
+        self.lastRecoveryReason = lastRecoveryReason
+        self.lastRecoveryError = lastRecoveryError
+        self.lastRecoveredAt = lastRecoveredAt
         self.updatedAt = updatedAt
     }
 
@@ -62,6 +77,11 @@ private struct LocalExposureSnapshot: Codable, Sendable {
         self.capturedAt = exposure.captured_at
         self.uploadedAt = exposure.uploaded_at
         self.lastError = exposure.last_error
+        self.lastRecoveryFromState = exposure.last_recovery_from_state
+        self.lastRecoveryToState = exposure.last_recovery_to_state
+        self.lastRecoveryReason = exposure.last_recovery_reason
+        self.lastRecoveryError = exposure.last_recovery_error
+        self.lastRecoveredAt = exposure.last_recovered_at
         self.updatedAt = exposure.updated_at
     }
 
@@ -80,6 +100,11 @@ private struct LocalExposureSnapshot: Codable, Sendable {
             captured_at: capturedAt,
             uploaded_at: uploadedAt,
             last_error: lastError,
+            last_recovery_from_state: lastRecoveryFromState,
+            last_recovery_to_state: lastRecoveryToState,
+            last_recovery_reason: lastRecoveryReason,
+            last_recovery_error: lastRecoveryError,
+            last_recovered_at: lastRecoveredAt,
             updated_at: updatedAt
         )
     }
@@ -176,6 +201,11 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
         let uploadedAt = exposure.uploaded_at ?? existing?.uploadedAt
         let updatedAt = max(existing?.updatedAt ?? exposure.updated_at, exposure.updated_at)
         let lastError = cloudHasUploadedAsset ? nil : existing?.lastError
+        let lastRecoveryFromState = existing?.lastRecoveryFromState
+        let lastRecoveryToState = existing?.lastRecoveryToState
+        let lastRecoveryReason = existing?.lastRecoveryReason
+        let lastRecoveryError = existing?.lastRecoveryError
+        let lastRecoveredAt = existing?.lastRecoveredAt
 
         return LocalExposureSnapshot(
             id: id,
@@ -191,6 +221,11 @@ final class FileBackedExposureMirrorStore: ExposureMirrorStore {
             capturedAt: capturedAt,
             uploadedAt: uploadedAt,
             lastError: lastError,
+            lastRecoveryFromState: lastRecoveryFromState,
+            lastRecoveryToState: lastRecoveryToState,
+            lastRecoveryReason: lastRecoveryReason,
+            lastRecoveryError: lastRecoveryError,
+            lastRecoveredAt: lastRecoveredAt,
             updatedAt: updatedAt
         )
     }

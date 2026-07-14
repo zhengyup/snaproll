@@ -113,6 +113,82 @@ struct V2ExposureUploadPipelineTests {
         #expect(failedExposure.last_error != nil)
         #expect(originalDataBeforeFailure == originalDataAfterFailure)
     }
+
+    @Test
+    func exposureWithCloudStoragePathSkipsUploadAndResumesMetadata() async throws {
+        let rollID = UUID(uuidString: "72727272-0000-0000-0000-000000000001")!
+        let exposureID = UUID(uuidString: "72727272-0000-0000-0000-000000000101")!
+        let participantID = UUID(uuidString: "72727272-0000-0000-0000-000000000201")!
+        let storageRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let photoStorage = PhotoStorageService(storageRootDirectoryURL: storageRoot)
+        let exposure = makeUploadExposure(
+            id: exposureID,
+            rollID: rollID,
+            participantID: participantID,
+            exposureNumber: 1
+        )
+        exposure.sync_state = .failed
+        exposure.cloud_storage_path = exposure.canonicalCloudStoragePath
+
+        let mirrorStore = UploadMirrorStore(initialExposures: [rollID: [exposure]])
+        let storageRepository = RecordingExposureAssetStorageRepository()
+        let pipeline = V2ExposureUploadPipeline(
+            exposureMirrorStore: mirrorStore,
+            photoStorageService: photoStorage,
+            storageRepository: storageRepository
+        )
+
+        try await pipeline.processUploadStage(for: exposure, rollID: rollID)
+        let updated = try await mirrorStore.fetchExposures(forRollID: rollID)
+        let recovered = try #require(updated.first)
+
+        #expect(recovered.sync_state == .metadataPending)
+        #expect(recovered.cloud_storage_path == exposure.canonicalCloudStoragePath)
+        #expect(await storageRepository.uploadedPaths.isEmpty)
+    }
+
+    @Test
+    func uploadRetryUsesCanonicalPathWhenObjectAlreadyExists() async throws {
+        let rollID = UUID(uuidString: "73737373-0000-0000-0000-000000000001")!
+        let exposureID = UUID(uuidString: "73737373-0000-0000-0000-000000000101")!
+        let participantID = UUID(uuidString: "73737373-0000-0000-0000-000000000201")!
+        let storageRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let photoStorage = PhotoStorageService(storageRootDirectoryURL: storageRoot)
+        let originalURL = try photoStorage.saveOriginalImageData(
+            samplePNGData(),
+            for: rollID,
+            exposureID: exposureID,
+            preferredFileExtension: "png"
+        )
+
+        let exposure = makeUploadExposure(
+            id: exposureID,
+            rollID: rollID,
+            participantID: participantID,
+            exposureNumber: 4
+        )
+        exposure.local_original_path = photoStorage.persistentLocalPath(for: originalURL)
+        exposure.sync_state = .uploading
+
+        let mirrorStore = UploadMirrorStore(initialExposures: [rollID: [exposure]])
+        let storageRepository = RecordingExposureAssetStorageRepository(
+            existingPaths: [exposure.canonicalCloudStoragePath]
+        )
+        let pipeline = V2ExposureUploadPipeline(
+            exposureMirrorStore: mirrorStore,
+            photoStorageService: photoStorage,
+            storageRepository: storageRepository
+        )
+
+        try await pipeline.processUploadStage(for: exposure, rollID: rollID)
+        let updated = try await mirrorStore.fetchExposures(forRollID: rollID)
+        let uploaded = try #require(updated.first)
+
+        #expect(await storageRepository.uploadedPaths == [exposure.canonicalCloudStoragePath])
+        #expect(await storageRepository.overwrittenPaths == [exposure.canonicalCloudStoragePath])
+        #expect(uploaded.sync_state == .metadataPending)
+        #expect(uploaded.cloud_storage_path == exposure.canonicalCloudStoragePath)
+    }
 }
 
 @MainActor
@@ -145,10 +221,13 @@ private final class UploadMirrorStore: ExposureMirrorStore {
 
 private actor RecordingExposureAssetStorageRepository: ExposureAssetStorageRepository {
     private(set) var uploadedPaths: [String] = []
+    private(set) var overwrittenPaths: [String] = []
     private let shouldFail: Bool
+    private var existingPaths: Set<String>
 
-    init(shouldFail: Bool = false) {
+    init(shouldFail: Bool = false, existingPaths: Set<String> = []) {
         self.shouldFail = shouldFail
+        self.existingPaths = existingPaths
     }
 
     func uploadJPEG(data: Data, to storagePath: String) async throws {
@@ -156,6 +235,10 @@ private actor RecordingExposureAssetStorageRepository: ExposureAssetStorageRepos
             throw NSError(domain: "UploadFailure", code: 1, userInfo: [NSLocalizedDescriptionKey: "Simulated upload failure"])
         }
 
+        if existingPaths.contains(storagePath) {
+            overwrittenPaths.append(storagePath)
+        }
+        existingPaths.insert(storagePath)
         uploadedPaths.append(storagePath)
     }
 

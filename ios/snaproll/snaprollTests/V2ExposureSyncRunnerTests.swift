@@ -5,6 +5,100 @@ import Testing
 @MainActor
 struct V2ExposureSyncRunnerTests {
     @Test
+    func simultaneousSyncRequestsResultInOneActivePass() async throws {
+        let rollID = UUID(uuidString: "10101010-0000-0000-0000-000000000001")!
+        let exposure = makeRunnerExposure(
+            id: UUID(uuidString: "10101010-0000-0000-0000-000000000101")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            syncState: .localOnly
+        )
+        let store = RunnerMirrorStore(initialExposures: [rollID: [exposure]])
+        let uploadStage = RecordingUploadStage(
+            exposureMirrorStore: store,
+            delayNanoseconds: 100_000_000
+        )
+        let metadataStage = RecordingMetadataStage(exposureMirrorStore: store)
+        let runner = V2ExposureSyncRunner(
+            exposureMirrorStore: store,
+            uploadStage: uploadStage,
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
+        )
+
+        let firstTask = Task {
+            try await runner.processPendingExposures(forRollID: rollID)
+        }
+        await Task.yield()
+        let duplicateSummary = try await runner.processPendingExposures(forRollID: rollID)
+        let firstSummary = try await firstTask.value
+
+        #expect(firstSummary.processedExposureIDs == [exposure.id])
+        #expect(duplicateSummary.wasSkippedDueToActiveRun)
+        #expect(duplicateSummary.processedCount == 0)
+        #expect(await uploadStage.processedExposureIDs == [exposure.id])
+    }
+
+    @Test
+    func laterRequestCanRunAfterFirstPassFinishes() async throws {
+        let rollID = UUID(uuidString: "10101010-0000-0000-0000-000000000002")!
+        let exposure = makeRunnerExposure(
+            id: UUID(uuidString: "10101010-0000-0000-0000-000000000201")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            syncState: .localOnly
+        )
+        let store = RunnerMirrorStore(initialExposures: [rollID: [exposure]])
+        let uploadStage = RecordingUploadStage(exposureMirrorStore: store)
+        let metadataStage = RecordingMetadataStage(exposureMirrorStore: store)
+        let runner = V2ExposureSyncRunner(
+            exposureMirrorStore: store,
+            uploadStage: uploadStage,
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
+        )
+
+        let firstSummary = try await runner.processPendingExposures(forRollID: rollID)
+        let secondSummary = try await runner.processPendingExposures(forRollID: rollID)
+
+        #expect(firstSummary.processedCount == 1)
+        #expect(!secondSummary.wasSkippedDueToActiveRun)
+        #expect(secondSummary.processedCount == 0)
+    }
+
+    @Test
+    func pendingExposuresAreProcessedSequentiallyByExposureNumber() async throws {
+        let rollID = UUID(uuidString: "10101010-0000-0000-0000-000000000003")!
+        let firstExposure = makeRunnerExposure(
+            id: UUID(uuidString: "10101010-0000-0000-0000-000000000301")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            syncState: .localOnly
+        )
+        let secondExposure = makeRunnerExposure(
+            id: UUID(uuidString: "10101010-0000-0000-0000-000000000302")!,
+            rollID: rollID,
+            exposureNumber: 2,
+            syncState: .localOnly
+        )
+        let store = RunnerMirrorStore(initialExposures: [rollID: [secondExposure, firstExposure]])
+        let uploadStage = RecordingUploadStage(exposureMirrorStore: store)
+        let metadataStage = RecordingMetadataStage(exposureMirrorStore: store)
+        let runner = V2ExposureSyncRunner(
+            exposureMirrorStore: store,
+            uploadStage: uploadStage,
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
+        )
+
+        let summary = try await runner.processPendingExposures(forRollID: rollID)
+
+        #expect(summary.processedExposureIDs == [firstExposure.id, secondExposure.id])
+        #expect(await uploadStage.processedExposureIDs == [firstExposure.id, secondExposure.id])
+        #expect(await metadataStage.processedExposureIDs == [firstExposure.id, secondExposure.id])
+    }
+
+    @Test
     func localOnlyExposureProgressesToSynced() async throws {
         let rollID = UUID(uuidString: "11111111-0000-0000-0000-000000000001")!
         let exposure = makeRunnerExposure(
@@ -19,7 +113,8 @@ struct V2ExposureSyncRunnerTests {
         let runner = V2ExposureSyncRunner(
             exposureMirrorStore: store,
             uploadStage: uploadStage,
-            metadataStage: metadataStage
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
         )
 
         let summary = try await runner.processPendingExposures(forRollID: rollID)
@@ -50,7 +145,8 @@ struct V2ExposureSyncRunnerTests {
         let runner = V2ExposureSyncRunner(
             exposureMirrorStore: store,
             uploadStage: uploadStage,
-            metadataStage: metadataStage
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
         )
 
         let summary = try await runner.processPendingExposures(forRollID: rollID)
@@ -79,7 +175,8 @@ struct V2ExposureSyncRunnerTests {
         let runner = V2ExposureSyncRunner(
             exposureMirrorStore: store,
             uploadStage: uploadStage,
-            metadataStage: metadataStage
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
         )
 
         let summary = try await runner.processPendingExposures(forRollID: rollID)
@@ -108,7 +205,8 @@ struct V2ExposureSyncRunnerTests {
         let runner = V2ExposureSyncRunner(
             exposureMirrorStore: store,
             uploadStage: uploadStage,
-            metadataStage: metadataStage
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
         )
 
         let summary = try await runner.processPendingExposures(forRollID: rollID)
@@ -144,7 +242,8 @@ struct V2ExposureSyncRunnerTests {
         let runner = V2ExposureSyncRunner(
             exposureMirrorStore: store,
             uploadStage: uploadStage,
-            metadataStage: metadataStage
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
         )
 
         let summary = try await runner.processPendingExposures(forRollID: rollID)
@@ -155,7 +254,7 @@ struct V2ExposureSyncRunnerTests {
         #expect(summary.failedCount == 1)
         #expect(updated[0].sync_state == .failed)
         #expect(updated[1].sync_state == .synced)
-        #expect(await uploadStage.processedExposureIDs == [firstExposure.id, secondExposure.id])
+        #expect(await uploadStage.processedExposureIDs == [firstExposure.id, firstExposure.id, secondExposure.id])
         #expect(await metadataStage.processedExposureIDs == [secondExposure.id])
     }
 
@@ -183,7 +282,8 @@ struct V2ExposureSyncRunnerTests {
         let runner = V2ExposureSyncRunner(
             exposureMirrorStore: restartedStore,
             uploadStage: uploadStage,
-            metadataStage: metadataStage
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
         )
 
         let summary = try await runner.processPendingExposures(forRollID: rollID)
@@ -227,7 +327,8 @@ struct V2ExposureSyncRunnerTests {
         let runner = V2ExposureSyncRunner(
             exposureMirrorStore: store,
             uploadStage: uploadStage,
-            metadataStage: metadataStage
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
         )
 
         let summary = try await runner.processPendingExposures(
@@ -244,6 +345,106 @@ struct V2ExposureSyncRunnerTests {
         #expect(syncedCurrent?.sync_state == .synced)
         #expect(untouchedOther?.sync_state == .localOnly)
         #expect(untouchedOther?.cloud_storage_path == nil)
+    }
+
+    @Test
+    func transientUploadFailureRetriesWithinOneSyncPass() async throws {
+        let rollID = UUID(uuidString: "88888888-0000-0000-0000-000000000001")!
+        let exposure = makeRunnerExposure(
+            id: UUID(uuidString: "88888888-0000-0000-0000-000000000101")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            syncState: .localOnly
+        )
+        let store = RunnerMirrorStore(initialExposures: [rollID: [exposure]])
+        let uploadStage = RecordingUploadStage(
+            exposureMirrorStore: store,
+            transientFailuresByExposureID: [exposure.id: 1]
+        )
+        let metadataStage = RecordingMetadataStage(exposureMirrorStore: store)
+        let runner = V2ExposureSyncRunner(
+            exposureMirrorStore: store,
+            uploadStage: uploadStage,
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
+        )
+
+        let summary = try await runner.processPendingExposures(forRollID: rollID)
+        let updated = try await store.fetchExposures(forRollID: rollID)
+
+        #expect(summary.syncedCount == 1)
+        #expect(summary.failedCount == 0)
+        #expect(await uploadStage.processedExposureIDs == [exposure.id, exposure.id])
+        #expect(updated.first?.sync_state == .synced)
+    }
+
+    @Test
+    func exhaustedRetriesPreserveLocalDataAndRetryableState() async throws {
+        let rollID = UUID(uuidString: "89898989-0000-0000-0000-000000000001")!
+        let exposure = makeRunnerExposure(
+            id: UUID(uuidString: "89898989-0000-0000-0000-000000000101")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            syncState: .localOnly
+        )
+        exposure.local_original_path = "/tmp/original.jpg"
+        let store = RunnerMirrorStore(initialExposures: [rollID: [exposure]])
+        let uploadStage = RecordingUploadStage(
+            exposureMirrorStore: store,
+            failingExposureIDs: [exposure.id]
+        )
+        let metadataStage = RecordingMetadataStage(exposureMirrorStore: store)
+        let runner = V2ExposureSyncRunner(
+            exposureMirrorStore: store,
+            uploadStage: uploadStage,
+            metadataStage: metadataStage,
+            maxAttemptsPerExposure: 2,
+            retryDelayNanoseconds: 0
+        )
+
+        let summary = try await runner.processPendingExposures(forRollID: rollID)
+        let updated = try await store.fetchExposures(forRollID: rollID)
+        let failedExposure = try #require(updated.first)
+
+        #expect(summary.syncedCount == 0)
+        #expect(summary.failedCount == 1)
+        #expect(await uploadStage.processedExposureIDs == [exposure.id, exposure.id])
+        #expect(failedExposure.sync_state == .failed)
+        #expect(failedExposure.local_original_path == "/tmp/original.jpg")
+        #expect(failedExposure.cloud_storage_path == nil)
+        #expect(failedExposure.last_error != nil)
+    }
+
+    @Test
+    func syncedAndEmptyExposuresAreIgnored() async throws {
+        let rollID = UUID(uuidString: "90909090-0000-0000-0000-000000000001")!
+        let emptyExposure = makeRunnerExposure(
+            id: UUID(uuidString: "90909090-0000-0000-0000-000000000101")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            syncState: .empty
+        )
+        let syncedExposure = makeRunnerExposure(
+            id: UUID(uuidString: "90909090-0000-0000-0000-000000000102")!,
+            rollID: rollID,
+            exposureNumber: 2,
+            syncState: .synced
+        )
+        let store = RunnerMirrorStore(initialExposures: [rollID: [emptyExposure, syncedExposure]])
+        let uploadStage = RecordingUploadStage(exposureMirrorStore: store)
+        let metadataStage = RecordingMetadataStage(exposureMirrorStore: store)
+        let runner = V2ExposureSyncRunner(
+            exposureMirrorStore: store,
+            uploadStage: uploadStage,
+            metadataStage: metadataStage,
+            retryDelayNanoseconds: 0
+        )
+
+        let summary = try await runner.processPendingExposures(forRollID: rollID)
+
+        #expect(summary.processedCount == 0)
+        #expect(await uploadStage.processedExposureIDs.isEmpty)
+        #expect(await metadataStage.processedExposureIDs.isEmpty)
     }
 }
 
@@ -279,23 +480,41 @@ private actor RecordingUploadStage: ExposureUploadStageSyncing {
     private(set) var processedExposureIDs: [UUID] = []
     private let exposureMirrorStore: any ExposureMirrorStore
     private let failingExposureIDs: Set<UUID>
+    private var transientFailuresByExposureID: [UUID: Int]
+    private let delayNanoseconds: UInt64
 
     init(
         exposureMirrorStore: any ExposureMirrorStore,
-        failingExposureIDs: Set<UUID> = []
+        failingExposureIDs: Set<UUID> = [],
+        transientFailuresByExposureID: [UUID: Int] = [:],
+        delayNanoseconds: UInt64 = 0
     ) {
         self.exposureMirrorStore = exposureMirrorStore
         self.failingExposureIDs = failingExposureIDs
+        self.transientFailuresByExposureID = transientFailuresByExposureID
+        self.delayNanoseconds = delayNanoseconds
     }
 
     func processUploadStage(for exposure: LocalExposure, rollID: UUID) async throws {
         let exposureID = await MainActor.run { exposure.id }
         processedExposureIDs.append(exposureID)
+        if delayNanoseconds > 0 {
+            try await Task.sleep(nanoseconds: delayNanoseconds)
+        }
+
         if failingExposureIDs.contains(exposureID) {
             throw NSError(
                 domain: "UploadStage",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Simulated upload failure"]
+            )
+        }
+        if let remainingFailures = transientFailuresByExposureID[exposureID], remainingFailures > 0 {
+            transientFailuresByExposureID[exposureID] = remainingFailures - 1
+            throw NSError(
+                domain: "UploadStage",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Simulated transient upload failure"]
             )
         }
 
