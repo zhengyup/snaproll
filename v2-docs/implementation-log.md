@@ -2470,3 +2470,95 @@ Supporting V2 domain types:
 - This phase intentionally does not download missing cloud originals back to the device.
 - This phase intentionally does not perform destructive local cleanup for orphaned files.
 - Broader conflict resolution UI, repair tooling, background reconciliation, and cloud-original fallback remain future hardening work.
+
+## Phase 15A – Join Shared Rolls via Invite Link
+
+### Files changed
+
+- `ios/snaproll/snaproll.xcodeproj/project.pbxproj`
+- `ios/snaproll/snaproll/App/SnaprollApp.swift`
+- `ios/snaproll/snaproll/App/V2/V2CloudHomeView.swift`
+- `ios/snaproll/snaproll/App/V2/V2DependencyContainer.swift`
+- `ios/snaproll/snaproll/App/V2/V2InviteRoutingCoordinator.swift`
+- `ios/snaproll/snaproll/App/V2/V2RollInvitePreviewView.swift`
+- `ios/snaproll/snaproll/App/V2/V2SessionBootstrap.swift`
+- `ios/snaproll/snaproll/App/V2/V2SharedRollLobbyView.swift`
+- `ios/snaproll/snaproll/Models/V2/RollInviteLink.swift`
+- `ios/snaproll/snaproll/Repositories/SupabaseRepositories.swift`
+- `ios/snaproll/snaproll/Repositories/V2RepositoryProtocols.swift`
+- `ios/snaproll/snaproll/Utilities/AppConfig.swift`
+- `ios/snaproll/snaproll/ViewModels/V2RollInvitePreviewViewModel.swift`
+- `ios/snaproll/snaprollTests/RollInviteLinkTests.swift`
+- `ios/snaproll/snaprollTests/V2InviteRoutingCoordinatorTests.swift`
+- `ios/snaproll/snaprollTests/V2RollInvitePreviewViewModelTests.swift`
+- `supabase/migrations/20260714120000_phase_15a_invite_preview_rpc.sql`
+- `v2-docs/implementation-log.md`
+
+### Invite link model
+
+- Added `RollInviteLink` as the centralized invite-link generator/parser.
+- Development links currently use the custom URL scheme:
+  - `snaproll://join?token=<invite-token>`
+- HTTPS links are supported by the same parser/generator once `AppConfig.V2.inviteHTTPSDomain` is configured:
+  - `https://<domain>/join/<invite-token>`
+  - `https://<domain>/join?token=<invite-token>`
+- Invite tokens remain the backend source of truth. The URL is only a transport wrapper around the existing invite token.
+- HTTPS path parsing uses `percentEncodedPath` so encoded token characters such as `/` cannot be mistaken for extra route segments.
+- The custom scheme is registered in the generated app Info.plist build settings. Production Universal Links still require the Associated Domains entitlement and an Apple App Site Association file when the final domain exists.
+
+### App-level routing
+
+- Added `V2InviteRoutingCoordinator` to own pending invite routing state.
+- `SnaprollApp` handles incoming URLs through `.onOpenURL` on the root SwiftUI view and forwards valid Snaproll invite URLs to the coordinator.
+- Pending invite state is retained while the V2 session bootstrap resolves authentication, so a cold-start invite can be presented after sign-in.
+- Successful join clears the pending invite and routes to the joined shared lobby.
+- Invalid Snaproll invite links surface a lightweight alert instead of crashing or silently failing.
+
+### Invite preview and join flow
+
+- Added `InvitePreviewRepository` and `RollInvitePreview`.
+- Added `SupabaseInvitePreviewRepository`, backed by the new read-only RPC `get_roll_invite_preview(token)`.
+- Added `V2RollInvitePreviewViewModel` and `V2RollInvitePreviewView`.
+- Opening an invite link now presents a preview before joining:
+  - roll title
+  - creator display name when available
+  - participant count/cap
+  - exposure count
+  - status
+- Joining still calls the existing `ParticipantRepository.joinRoll(...)` path, which uses the approved `join_roll()` RPC. No join business logic moved into iOS.
+- Already-joined errors route the user to the existing roll when the preview has enough context.
+- Invalid, inactive, already-started, full, and network failure states are mapped into user-readable messages.
+
+### Shared-roll UI changes
+
+- Creator invite actions now use native `ShareLink` instead of manual token copying in normal UI.
+- Manual token entry remains available only when `AppConfig.V2.showsDeveloperUI` is true.
+- Shared lobby invite display now shares the generated invite link. Raw token/link diagnostics are shown only in developer UI.
+
+### Database migration
+
+- Added `20260714120000_phase_15a_invite_preview_rpc.sql`.
+- The migration creates `public.get_roll_invite_preview(p_invite_token text)`.
+- The function is read-only, security-definer, requires an authenticated profile, and returns only the preview fields required before explicit join.
+- The function does not replace `join_roll()` and does not mutate invite, roll, participant, exposure, or storage state.
+- The migration must be applied with `supabase db push` before cloud-backed invite previews work on device.
+
+### Build and test commands
+
+- Focused tests:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17 Pro' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase15a-tests CODE_SIGNING_ALLOWED=NO -only-testing:snaprollTests/RollInviteLinkTests -only-testing:snaprollTests/V2InviteRoutingCoordinatorTests -only-testing:snaprollTests/V2RollInvitePreviewViewModelTests -only-testing:snaprollTests/V2CloudHomeViewModelTests -only-testing:snaprollTests/V2SharedRollLobbyViewModelTests test`
+- Full build:
+  - `xcodebuild -quiet -project ios/snaproll/snaproll.xcodeproj -scheme snaproll -destination 'generic/platform=iOS' -derivedDataPath /Users/zhengyu/Desktop/projects/snaproll/.deriveddata-phase15a-build CODE_SIGNING_ALLOWED=NO build`
+
+### Results
+
+- Focused Phase 15A invite-link, routing, preview, cloud-home, and shared-lobby tests passed.
+- Full iOS project build passed.
+- The full build emitted existing warnings around camera orientation APIs and V2 Supabase configuration actor isolation; these were not introduced by Phase 15A.
+
+### Assumptions and follow-up work
+
+- Manual device validation was not performed in this implementation pass.
+- Production HTTPS Universal Links are prepared in code but not fully enabled until the production invite domain, Associated Domains entitlement, and AASA file exist.
+- Invite routing state is intentionally in-memory; iOS should deliver the opening URL at launch, after which the coordinator retains it through bootstrap.
+- Manual token entry is retained for developer/debug workflows only.

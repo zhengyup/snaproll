@@ -175,6 +175,22 @@ private struct CompleteExposureRPCResponse: Decodable {
     let roll_ready_to_reveal: Bool
 }
 
+private struct InvitePreviewRPCRequest: Encodable {
+    let p_invite_token: String
+}
+
+private struct InvitePreviewRPCResponse: Decodable {
+    let roll_id: UUID
+    let title: String
+    let creator_display_name: String?
+    let participant_count: Int
+    let participant_cap: Int
+    let exposures_per_participant: Int
+    let status: String
+    let is_active: Bool
+    let is_accepting_participants: Bool
+}
+
 private struct ProfileDisplayNameRecord: Decodable {
     let display_name: String?
 }
@@ -661,6 +677,40 @@ final class SupabaseInviteRepository: InviteRepository, @unchecked Sendable, Sup
         throw V2RepositoryError.unsupportedOperation(
             "deleteInvite(id:) is deferred until the dedicated V2 invite-management flow is implemented."
         )
+    }
+}
+
+final class SupabaseInvitePreviewRepository: InvitePreviewRepository, @unchecked Sendable, SupabaseRepositorySupporting {
+    let clientProvider: V2SupabaseClientProvider
+    let logger = RepositoryLogger.logger(category: "V2InvitePreviewRepository")
+
+    init(clientProvider: V2SupabaseClientProvider) {
+        self.clientProvider = clientProvider
+    }
+
+    func fetchInvitePreview(token: String) async throws -> RollInvitePreview {
+        try await withClient(operation: "invite.fetchInvitePreview") { client in
+            let response: InvitePreviewRPCResponse = try await client
+                .rpc(
+                    "get_roll_invite_preview",
+                    params: InvitePreviewRPCRequest(p_invite_token: token)
+                )
+                .single()
+                .execute()
+                .value
+
+            return RollInvitePreview(
+                rollID: response.roll_id,
+                title: response.title,
+                creatorDisplayName: response.creator_display_name,
+                participantCount: response.participant_count,
+                participantCap: response.participant_cap,
+                exposuresPerParticipant: response.exposures_per_participant,
+                status: V2Domain.RollStatus(rawValue: response.status) ?? .draft,
+                isActive: response.is_active,
+                isAcceptingParticipants: response.is_accepting_participants
+            )
+        }
     }
 }
 

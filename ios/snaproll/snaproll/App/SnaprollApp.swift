@@ -8,6 +8,7 @@ struct SnaprollApp: App {
     private let developmentAuthSettings: DevelopmentAuthSettings
     private let v2Dependencies: V2DependencyContainer
     private let v2SessionStore: V2SessionStore
+    private let inviteRoutingCoordinator: V2InviteRoutingCoordinator
 
     init() {
         let identityStore = DevelopmentAuthIdentityStore(
@@ -20,18 +21,25 @@ struct SnaprollApp: App {
         self.developmentAuthSettings = developmentAuthSettings
         self.v2Dependencies = dependencies
         self.v2SessionStore = V2SessionStore(authRepository: dependencies.authRepository)
+        self.inviteRoutingCoordinator = V2InviteRoutingCoordinator()
     }
 
     var body: some Scene {
         WindowGroup {
-            if AppConfig.V2.isSessionBootstrapEnabled {
-                V2BootstrapEntryView(
-                    sessionStore: v2SessionStore,
-                    dependencies: v2Dependencies,
-                    developmentAuthSettings: developmentAuthSettings
-                )
-            } else {
-                HomeView()
+            Group {
+                if AppConfig.V2.isSessionBootstrapEnabled {
+                    V2BootstrapEntryView(
+                        sessionStore: v2SessionStore,
+                        dependencies: v2Dependencies,
+                        developmentAuthSettings: developmentAuthSettings,
+                        inviteRoutingCoordinator: inviteRoutingCoordinator
+                    )
+                } else {
+                    HomeView()
+                }
+            }
+            .onOpenURL { url in
+                inviteRoutingCoordinator.handleIncomingURL(url)
             }
         }
     }

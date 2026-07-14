@@ -88,7 +88,7 @@ struct V2SharedRollLobbyView: View {
                     }
 
                     if let inviteToken = viewModel.visibleInviteToken {
-                        inviteCard(token: inviteToken)
+                        inviteCard(inviteToken: inviteToken)
                     }
 
                     if viewModel.roll?.status == .shooting || viewModel.roll?.status == .readyToReveal || viewModel.roll?.status == .revealed {
@@ -291,38 +291,54 @@ struct V2SharedRollLobbyView: View {
         .background(cardBackground)
     }
 
-    private func inviteCard(token: String) -> some View {
+    private func inviteCard(inviteToken: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Invite Token")
+            Text("Invite Friends")
                 .font(.headline)
                 .foregroundStyle(.white)
 
-            Text("Share this code with another development identity to join the lobby.")
+            Text("Share a Snaproll invite link. Friends can preview the roll before joining.")
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.65))
 
-            Button {
-                handleInviteCopy(token)
-            } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(token)
-                        .font(.body.monospaced())
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Text("Tap to copy")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.58))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            if let inviteLink = RollInviteLink(token: inviteToken) {
+                ShareLink(
+                    item: inviteLink.url,
+                    subject: Text("Join my Snaproll"),
+                    message: Text("Join my Snaproll: \(inviteLink.url.absoluteString)")
+                ) {
+                    Text("Share Invite")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .padding(.vertical, 14)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.black.opacity(0.18))
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
                 )
+
+                if viewModel.shouldShowDiagnostics {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(inviteLink.url.absoluteString)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.white.opacity(0.72))
+                            .textSelection(.enabled)
+
+                        Text("Token: \(inviteToken)")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.white.opacity(0.5))
+                            .textSelection(.enabled)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.black.opacity(0.18))
+                    )
+                }
             }
-            .buttonStyle(.plain)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)

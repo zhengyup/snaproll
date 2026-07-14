@@ -19,6 +19,7 @@ xcuserdata/
 .build-home/
 .swiftpm/
 
+
 # Local app data / generated photos
 Documents/
 Snaproll/photos/
@@ -39,6 +40,9 @@ EOF
 .deriveddata-phase9b-build/
 .derivedData-tests-exposure-picker/
 .deriveddata-phase13-tests/
+.deriveddata-phase15a-build/
+.deriveddata-phase15a-tests/
+
 
 # image testing 
 film-references/

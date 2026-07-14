@@ -107,15 +107,18 @@ final class V2SessionStore: ObservableObject {
 
 struct V2BootstrapEntryView: View {
     @StateObject private var sessionStore: V2SessionStore
+    @ObservedObject private var inviteRoutingCoordinator: V2InviteRoutingCoordinator
     private let dependencies: V2DependencyContainer
     private let developmentAuthSettings: DevelopmentAuthSettings
 
     init(
         sessionStore: V2SessionStore,
         dependencies: V2DependencyContainer,
-        developmentAuthSettings: DevelopmentAuthSettings
+        developmentAuthSettings: DevelopmentAuthSettings,
+        inviteRoutingCoordinator: V2InviteRoutingCoordinator
     ) {
         _sessionStore = StateObject(wrappedValue: sessionStore)
+        _inviteRoutingCoordinator = ObservedObject(wrappedValue: inviteRoutingCoordinator)
         self.dependencies = dependencies
         self.developmentAuthSettings = developmentAuthSettings
     }
@@ -135,7 +138,8 @@ struct V2BootstrapEntryView: View {
                 V2CloudHomeView(
                     sessionStore: sessionStore,
                     developmentAuthSettings: developmentAuthSettings,
-                    dependencies: dependencies
+                    dependencies: dependencies,
+                    inviteRoutingCoordinator: inviteRoutingCoordinator
                 )
             case .failed(let message):
                 VStack(spacing: 20) {

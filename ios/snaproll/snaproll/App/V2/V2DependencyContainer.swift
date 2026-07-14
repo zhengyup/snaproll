@@ -8,6 +8,7 @@ struct V2DependencyContainer {
     let exposureMirrorStore: any ExposureMirrorStore
     let exposureAssetStorageRepository: any ExposureAssetStorageRepository
     let inviteRepository: any InviteRepository
+    let invitePreviewRepository: any InvitePreviewRepository
     let photoStorageService: PhotoStorageService
     let exposureSyncRunner: any ExposureSyncRunning
     let exposureReconciliationCoordinator: any ExposureReconciling
@@ -77,6 +78,7 @@ struct V2DependencyContainer {
             exposureMirrorStore: exposureMirrorStore,
             exposureAssetStorageRepository: storageRepository,
             inviteRepository: SupabaseInviteRepository(clientProvider: clientProvider),
+            invitePreviewRepository: SupabaseInvitePreviewRepository(clientProvider: clientProvider),
             photoStorageService: photoStorageService,
             exposureSyncRunner: exposureSyncRunner,
             exposureReconciliationCoordinator: exposureReconciliationCoordinator,

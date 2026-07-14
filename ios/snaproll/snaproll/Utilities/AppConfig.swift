@@ -33,6 +33,9 @@ enum AppConfig {
         static let waitingForParticipantsPollingInterval: TimeInterval = 5
         static let sharedShootingPollingInterval: TimeInterval = 10
         static let readyToRevealPollingInterval: TimeInterval = 5
+        static let inviteURLScheme = "snaproll"
+        // Set this once a production Universal Link domain and AASA file exist.
+        static let inviteHTTPSDomain: String? = nil
 
         #if DEBUG
         // Change only this value to switch between a developer-facing V2 experience and a user-facing one.

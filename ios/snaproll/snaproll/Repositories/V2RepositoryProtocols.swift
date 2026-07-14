@@ -20,6 +20,18 @@ struct CompleteExposureResult: Sendable, Equatable {
     let rollReadyToReveal: Bool
 }
 
+struct RollInvitePreview: Sendable, Equatable {
+    let rollID: UUID
+    let title: String
+    let creatorDisplayName: String?
+    let participantCount: Int
+    let participantCap: Int
+    let exposuresPerParticipant: Int
+    let status: V2Domain.RollStatus
+    let isActive: Bool
+    let isAcceptingParticipants: Bool
+}
+
 protocol AuthRepository: Sendable {
     func currentSession() async throws -> AuthSession?
     func currentUserID() async throws -> UUID?
@@ -86,6 +98,10 @@ protocol InviteRepository: Sendable {
     func regenerateInvite(forRollID rollID: UUID) async throws -> LocalInvite
     func saveInvite(_ invite: LocalInvite) async throws
     func deleteInvite(id: UUID) async throws
+}
+
+protocol InvitePreviewRepository: Sendable {
+    func fetchInvitePreview(token: String) async throws -> RollInvitePreview
 }
 
 protocol SyncRepository: Sendable {

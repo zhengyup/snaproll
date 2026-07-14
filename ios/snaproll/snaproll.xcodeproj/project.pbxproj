@@ -419,6 +419,15 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleTypeRole = Editor;
+						CFBundleURLName = com.pzy.snaproll;
+						CFBundleURLSchemes = (
+							snaproll,
+						);
+					},
+				);
 				INFOPLIST_KEY_NSCameraUsageDescription = "Snaproll needs camera access so you can capture memories directly into your roll.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
@@ -478,6 +487,15 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleTypeRole = Editor;
+						CFBundleURLName = com.pzy.snaproll;
+						CFBundleURLSchemes = (
+							snaproll,
+						);
+					},
+				);
 				INFOPLIST_KEY_NSCameraUsageDescription = "Snaproll needs camera access so you can capture memories directly into your roll.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Snaproll needs Photo Library access when you choose to export revealed memories.";

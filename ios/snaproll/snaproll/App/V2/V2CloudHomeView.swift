@@ -7,6 +7,7 @@ struct V2CloudHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var sessionStore: V2SessionStore
     @ObservedObject var developmentAuthSettings: DevelopmentAuthSettings
+    @ObservedObject var inviteRoutingCoordinator: V2InviteRoutingCoordinator
     @StateObject private var viewModel: V2CloudHomeViewModel
     @State private var isShowingCopyToast = false
     @State private var copyToastTask: Task<Void, Never>?
@@ -14,10 +15,12 @@ struct V2CloudHomeView: View {
     init(
         sessionStore: V2SessionStore,
         developmentAuthSettings: DevelopmentAuthSettings,
-        dependencies: V2DependencyContainer
+        dependencies: V2DependencyContainer,
+        inviteRoutingCoordinator: V2InviteRoutingCoordinator
     ) {
         self.sessionStore = sessionStore
         self.developmentAuthSettings = developmentAuthSettings
+        _inviteRoutingCoordinator = ObservedObject(wrappedValue: inviteRoutingCoordinator)
         self.dependencies = dependencies
         self.pendingRecoveryCoordinator = dependencies.pendingExposureRecoveryCoordinator
         _viewModel = StateObject(
@@ -58,24 +61,23 @@ struct V2CloudHomeView: View {
                     )
 
                     if let inviteToken = viewModel.lastCreatedSharedInviteToken {
-                        V2CloudInviteTokenPanel(
+                        V2CloudInviteSharePanel(
                             rollTitle: viewModel.lastCreatedSharedRollTitle ?? "Shared Roll",
-                            inviteToken: inviteToken,
-                            onCopy: {
-                                handleInviteCopy(inviteToken)
-                            }
+                            inviteToken: inviteToken
                         )
                     }
 
-                    V2CloudJoinRollPanel(
-                        inviteToken: $viewModel.joinInviteToken,
-                        isJoining: viewModel.isJoiningRoll,
-                        onJoin: {
-                            Task {
-                                await viewModel.joinSharedRoll()
+                    if AppConfig.V2.showsDeveloperUI {
+                        V2CloudJoinRollPanel(
+                            inviteToken: $viewModel.joinInviteToken,
+                            isJoining: viewModel.isJoiningRoll,
+                            onJoin: {
+                                Task {
+                                    await viewModel.joinSharedRoll()
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
 
                     if let actionErrorMessage = viewModel.actionErrorMessage {
                         V2CloudStatusCard(
@@ -132,6 +134,35 @@ struct V2CloudHomeView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            .sheet(item: pendingInviteBinding) { invite in
+                V2RollInvitePreviewView(
+                    invite: invite,
+                    dependencies: dependencies,
+                    onDismissInvite: {
+                        inviteRoutingCoordinator.dismissPendingInvite()
+                    },
+                    onJoined: { rollID in
+                        inviteRoutingCoordinator.completeJoin(rollID: rollID)
+                        Task {
+                            await viewModel.load()
+                        }
+                    }
+                )
+            }
+            .navigationDestination(item: $inviteRoutingCoordinator.joinedRoute) { route in
+                V2SharedRollLobbyView(
+                    rollID: route.rollID,
+                    developmentIdentity: developmentAuthSettings.selectedIdentity,
+                    dependencies: dependencies
+                )
+            }
+            .alert("Invite link problem", isPresented: invalidInviteAlertBinding) {
+                Button("OK") {
+                    inviteRoutingCoordinator.dismissInvalidInviteMessage()
+                }
+            } message: {
+                Text(inviteRoutingCoordinator.invalidInviteMessage ?? "This Snaproll invite link is not valid.")
+            }
         }
         .task(id: signedInUserID) {
             await handleSessionScopedLoadAndRecovery()
@@ -148,6 +179,28 @@ struct V2CloudHomeView: View {
         .onDisappear {
             copyToastTask?.cancel()
         }
+    }
+
+    private var pendingInviteBinding: Binding<RollInviteLink?> {
+        Binding(
+            get: { inviteRoutingCoordinator.pendingInvite },
+            set: { newValue in
+                if newValue == nil {
+                    inviteRoutingCoordinator.dismissPendingInvite()
+                }
+            }
+        )
+    }
+
+    private var invalidInviteAlertBinding: Binding<Bool> {
+        Binding(
+            get: { inviteRoutingCoordinator.invalidInviteMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    inviteRoutingCoordinator.dismissInvalidInviteMessage()
+                }
+            }
+        )
     }
 
     private var signedInUserID: UUID? {
@@ -390,10 +443,9 @@ private struct V2CloudCreateRollPanel: View {
     }
 }
 
-private struct V2CloudInviteTokenPanel: View {
+private struct V2CloudInviteSharePanel: View {
     let rollTitle: String
     let inviteToken: String
-    let onCopy: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -405,26 +457,31 @@ private struct V2CloudInviteTokenPanel: View {
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.65))
 
-            Button(action: onCopy) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(inviteToken)
-                        .font(.body.monospaced())
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Text("Tap to copy")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.58))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            if let inviteLink = RollInviteLink(token: inviteToken) {
+                ShareLink(
+                    item: inviteLink.url,
+                    subject: Text("Join my Snaproll"),
+                    message: Text("Join my Snaproll: \(inviteLink.url.absoluteString)")
+                ) {
+                    Text("Share Invite")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .padding(.vertical, 14)
                 .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.black.opacity(0.16))
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
                 )
+
+                if AppConfig.V2.showsDeveloperUI {
+                    Text(inviteLink.url.absoluteString)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.white.opacity(0.58))
+                        .textSelection(.enabled)
+                }
             }
-            .buttonStyle(.plain)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
