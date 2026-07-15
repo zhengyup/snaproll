@@ -1,7 +1,4 @@
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
 struct V2CloudHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -9,8 +6,7 @@ struct V2CloudHomeView: View {
     @ObservedObject var developmentAuthSettings: DevelopmentAuthSettings
     @ObservedObject var inviteRoutingCoordinator: V2InviteRoutingCoordinator
     @StateObject private var viewModel: V2CloudHomeViewModel
-    @State private var isShowingCopyToast = false
-    @State private var copyToastTask: Task<Void, Never>?
+    @State private var isShowingCreateRoll = false
 
     init(
         sessionStore: V2SessionStore,
@@ -47,18 +43,6 @@ struct V2CloudHomeView: View {
                             onIdentitySelected: handleIdentitySelection
                         )
                     }
-
-                    V2CloudCreateRollPanel(
-                        draftTitle: $viewModel.draftTitle,
-                        selectedCreationType: $viewModel.selectedCreationType,
-                        selectedExposureCount: $viewModel.selectedExposureCount,
-                        isCreating: viewModel.isCreatingRoll,
-                        onCreate: {
-                            Task {
-                                await viewModel.createRoll()
-                            }
-                        }
-                    )
 
                     if let inviteToken = viewModel.lastCreatedSharedInviteToken {
                         V2CloudInviteSharePanel(
@@ -118,6 +102,16 @@ struct V2CloudHomeView: View {
             )
             .navigationTitle(AppConfig.V2.navigationTitle)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingCreateRoll = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .accessibilityLabel("Create roll")
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Refresh") {
                         Task {
@@ -127,12 +121,16 @@ struct V2CloudHomeView: View {
                     .disabled(sessionStore.state == .loading)
                 }
             }
-            .overlay(alignment: .top) {
-                if isShowingCopyToast {
-                    V2CopyFeedbackView(message: "Link copied")
-                        .padding(.top, 12)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
+            .sheet(isPresented: $isShowingCreateRoll) {
+                V2CloudCreateRollView(
+                    draftTitle: $viewModel.draftTitle,
+                    selectedCreationType: $viewModel.selectedCreationType,
+                    selectedExposureCount: $viewModel.selectedExposureCount,
+                    isCreating: viewModel.isCreatingRoll,
+                    onCreate: {
+                        await viewModel.createRoll()
+                    }
+                )
             }
             .sheet(item: pendingInviteBinding) { invite in
                 V2RollInvitePreviewView(
@@ -175,9 +173,6 @@ struct V2CloudHomeView: View {
             Task {
                 await handleForegroundRecovery()
             }
-        }
-        .onDisappear {
-            copyToastTask?.cancel()
         }
     }
 
@@ -234,35 +229,6 @@ struct V2CloudHomeView: View {
         }
     }
 
-    private func handleInviteCopy(_ inviteToken: String) {
-        #if os(iOS)
-        UIPasteboard.general.string = inviteToken
-        #endif
-
-        guard !isShowingCopyToast else {
-            return
-        }
-
-        withAnimation(.easeOut(duration: 0.18)) {
-            isShowingCopyToast = true
-        }
-
-        copyToastTask?.cancel()
-        copyToastTask = Task {
-            try? await Task.sleep(nanoseconds: 1_600_000_000)
-
-            guard !Task.isCancelled else {
-                return
-            }
-
-            await MainActor.run {
-                withAnimation(.easeIn(duration: 0.18)) {
-                    isShowingCopyToast = false
-                }
-                copyToastTask = nil
-            }
-        }
-    }
 }
 
 private struct V2CloudIdentityPanel: View {
@@ -329,117 +295,150 @@ private struct V2CloudIdentityPanel: View {
     }
 }
 
-private struct V2CloudCreateRollPanel: View {
+private struct V2CloudCreateRollView: View {
+    @Environment(\.dismiss) private var dismiss
     @Binding var draftTitle: String
     @Binding var selectedCreationType: V2Domain.RollType
     @Binding var selectedExposureCount: Int
     let isCreating: Bool
-    let onCreate: () -> Void
+    let onCreate: () async -> Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Create Roll")
-                .font(.headline)
-                .foregroundStyle(.white.opacity(0.95))
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Create Roll")
+                            .font(.largeTitle.weight(.semibold))
+                            .foregroundStyle(.white)
 
-            Picker("Roll Type", selection: $selectedCreationType) {
-                Text("Personal").tag(V2Domain.RollType.personal)
-                Text("Shared").tag(V2Domain.RollType.shared)
-            }
-            .pickerStyle(.segmented)
-
-            TextField("Untitled Roll", text: $draftTitle)
-                .textInputAutocapitalization(.words)
-                .disableAutocorrection(true)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.white.opacity(0.08))
-                )
-                .foregroundStyle(.white)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Exposure Count")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.6))
-
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(selectedExposureCount)")
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    Text(selectedExposureCount == 1 ? "exposure" : "exposures")
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.65))
-                }
-
-                Picker("Exposure Count", selection: $selectedExposureCount) {
-                    ForEach(Array(AppConfig.V2.createRollExposureCountRange), id: \.self) { count in
-                        Text("\(count)").tag(count)
+                        Text("Choose a name, type, and exposure count.")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.62))
                     }
-                }
-                .pickerStyle(.wheel)
-                .frame(height: 110)
-                .clipped()
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.white.opacity(0.08))
-                )
-            }
 
-            Button {
-                onCreate()
-            } label: {
-                if isCreating {
-                    ProgressView()
-                        .tint(.black)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text(buttonTitle)
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Roll Name")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.58))
+
+                        TextField("Untitled Roll", text: $draftTitle)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .fill(.white.opacity(0.08))
+                            )
+                            .foregroundStyle(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Roll Type")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.58))
+
+                        Picker("Roll Type", selection: $selectedCreationType) {
+                            Text("Personal").tag(V2Domain.RollType.personal)
+                            Text("Shared").tag(V2Domain.RollType.shared)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Exposures")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.58))
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(AppConfig.V2.createRollExposureCounts, id: \.self) { count in
+                                    Button {
+                                        selectedExposureCount = count
+                                    } label: {
+                                        VStack(spacing: 2) {
+                                            Text("\(count)")
+                                                .font(.title3.weight(.semibold))
+                                            Text("shots")
+                                                .font(.caption2.weight(.medium))
+                                                .textCase(.uppercase)
+                                                .opacity(0.7)
+                                        }
+                                        .frame(width: 72, height: 64)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(selectedExposureCount == count ? .black : .white)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                            .fill(selectedExposureCount == count ? Color(red: 0.94, green: 0.76, blue: 0.13) : .white.opacity(0.08))
+                                    )
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                            .strokeBorder(selectedExposureCount == count ? .clear : .white.opacity(0.12), lineWidth: 1)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 1)
+                        }
+                    }
+
+                    Button {
+                        Task {
+                            let didCreate = await onCreate()
+                            if didCreate {
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        if isCreating {
+                            ProgressView()
+                                .tint(.black)
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Create Roll")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.black)
+                    .padding(.vertical, 15)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+                    )
+                    .disabled(isCreating)
+                    .padding(.top, 4)
                 }
+                .padding(20)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.black)
-            .padding(.vertical, 14)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.08, green: 0.06, blue: 0.05),
+                        Color(red: 0.11, green: 0.09, blue: 0.07)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
             )
-            .disabled(isCreating)
-
-            Text(helperText)
-                .font(.footnote)
-                .foregroundStyle(.white.opacity(0.58))
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isCreating)
+                }
+            }
+            .onAppear {
+                if !AppConfig.V2.createRollExposureCounts.contains(selectedExposureCount),
+                   let defaultCount = AppConfig.V2.createRollExposureCounts.first {
+                    selectedExposureCount = defaultCount
+                }
+            }
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.white.opacity(0.08))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        }
-    }
-
-    private var helperText: String {
-        if selectedCreationType == .shared {
-            return "Creates a SHARED roll through the V2 Supabase RPC path with \(selectedExposureCount) exposure\(selectedExposureCount == 1 ? "" : "s") per participant. The creator becomes the first participant and receives an active invite token."
-        }
-
-        if AppConfig.V2.showsDeveloperUI {
-            return "Creates a PERSONAL roll through the V2 Supabase RPC path with \(selectedExposureCount) exposure\(selectedExposureCount == 1 ? "" : "s") and a single participant."
-        }
-
-        return "Create a new roll to begin capturing intentionally."
-    }
-
-    private var buttonTitle: String {
-        selectedCreationType == .shared ? "Create Shared Roll" : "Create Cloud Roll"
     }
 }
 
@@ -566,7 +565,7 @@ private struct V2CloudRollListSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Visible Cloud Rolls")
+            Text("My Rolls")
                 .font(.headline)
                 .foregroundStyle(.white.opacity(0.95))
 
@@ -636,7 +635,7 @@ private struct V2CloudRollListSection: View {
 
     private var emptyStateMessage: String {
         if AppConfig.V2.showsDeveloperUI {
-            return "Create one above, then switch identities to verify user-scoped cloud visibility."
+            return "Use the + button, then switch identities to verify user-scoped cloud visibility."
         }
 
         return "Create your first roll to start building your memories."

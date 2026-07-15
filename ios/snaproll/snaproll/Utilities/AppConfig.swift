@@ -29,7 +29,7 @@ enum AppConfig {
         static let isSessionBootstrapEnabled = true
         static let storageBucketName = "snaproll-originals"
         static let defaultCreateRollExposureCount = 3
-        static let createRollExposureCountRange = 1...36
+        static let createRollExposureCounts = [3, 6, 9, 12, 24, 36]
         static let waitingForParticipantsPollingInterval: TimeInterval = 5
         static let sharedShootingPollingInterval: TimeInterval = 10
         static let readyToRevealPollingInterval: TimeInterval = 5
@@ -39,7 +39,7 @@ enum AppConfig {
 
         #if DEBUG
         // Change only this value to switch between a developer-facing V2 experience and a user-facing one.
-        static let experienceMode: V2ExperienceMode = .developer
+        static let experienceMode: V2ExperienceMode = .user
         // Development-only auth path for building shared-roll features without Apple or Google sign-in.
         static let isDevelopmentAuthenticationEnabled = true
         static let developmentIdentity: DevelopmentAuthIdentity = .creator

@@ -63,9 +63,10 @@ final class V2CloudHomeViewModel: ObservableObject {
         await load()
     }
 
-    func createRoll() async {
+    @discardableResult
+    func createRoll() async -> Bool {
         guard !isCreatingRoll else {
-            return
+            return false
         }
 
         isCreatingRoll = true
@@ -100,8 +101,10 @@ final class V2CloudHomeViewModel: ObservableObject {
             }
 
             await load()
+            return true
         } catch {
             actionErrorMessage = error.localizedDescription
+            return false
         }
     }
 
