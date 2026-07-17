@@ -123,6 +123,40 @@ struct V2SharedRevealGalleryViewModelTests {
         #expect(await storageRepository.downloadedPaths == [cloudPath])
         #expect(await renderer.calls.count == 1)
     }
+
+    @Test
+    func sharedGalleryItemsExposeRenderedImageDimensions() async {
+        let rollID = UUID(uuidString: "84848484-0000-0000-0000-000000000001")!
+        let creatorUserID = UUID(uuidString: "84848484-0000-0000-0000-0000000000A1")!
+        let participantID = UUID(uuidString: "84848484-0000-0000-0000-0000000000B2")!
+        let participants = [
+            makeSharedGalleryParticipant(id: participantID, rollID: rollID, userID: creatorUserID, name: "Creator", status: .finished)
+        ]
+        let exposures = [
+            makeSharedGalleryExposure(id: UUID(), rollID: rollID, participantID: participantID, exposureNumber: 1, renderSeed: "portrait", localPath: "portrait.png"),
+            makeSharedGalleryExposure(id: UUID(), rollID: rollID, participantID: participantID, exposureNumber: 2, renderSeed: "landscape", localPath: "landscape.png")
+        ]
+        let viewModel = V2SharedRevealGalleryViewModel(
+            rollID: rollID,
+            authRepository: SharedGalleryAuthRepository(session: AuthSession(userID: creatorUserID, displayName: "Creator")),
+            rollRepository: SharedGalleryRollRepository(roll: makeSharedGalleryRoll(id: rollID, creatorID: creatorUserID)),
+            participantRepository: SharedGalleryParticipantRepository(participants: participants),
+            exposureRepository: SharedGalleryExposureRepository(exposures: exposures),
+            exposureMirrorStore: SharedGalleryMirrorStore(),
+            imageProvider: SharedGalleryImageProvider(imagesByPath: [
+                "portrait.png": sampleGalleryImage(size: CGSize(width: 90, height: 160)),
+                "landscape.png": sampleGalleryImage(size: CGSize(width: 160, height: 90))
+            ]),
+            storageRepository: SharedGalleryStorageRepository(),
+            renderer: SharedGalleryRenderer()
+        )
+
+        await viewModel.load()
+
+        let items = viewModel.sections.first?.items ?? []
+        #expect(items[0].pixelHeight > items[0].pixelWidth)
+        #expect(items[1].pixelWidth > items[1].pixelHeight)
+    }
 }
 
 private actor SharedGalleryAuthRepository: AuthRepository {
@@ -415,11 +449,11 @@ private func makeSharedGalleryExposure(
     )
 }
 
-private func sampleGalleryImage() -> UIImage {
-    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24))
+private func sampleGalleryImage(size: CGSize = CGSize(width: 24, height: 24)) -> UIImage {
+    let renderer = UIGraphicsImageRenderer(size: size)
     return renderer.image { context in
         UIColor.white.setFill()
-        context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+        context.fill(CGRect(origin: .zero, size: size))
     }
 }
 

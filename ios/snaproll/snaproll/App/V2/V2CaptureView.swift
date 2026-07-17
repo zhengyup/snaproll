@@ -4,6 +4,9 @@ import SwiftUI
 struct V2CaptureView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: V2CaptureViewModel
+    #if os(iOS)
+    @StateObject private var orientationTracker = CaptureOrientationTracker()
+    #endif
     private let onCaptureCompleted: () async -> Void
 
     init(
@@ -49,10 +52,26 @@ struct V2CaptureView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .statusBarHidden()
+        #if os(iOS)
+        .snaprollPreferredOrientations([.portrait, .landscapeLeft, .landscapeRight])
+        #endif
         .onAppear {
+            #if os(iOS)
+            orientationTracker.start()
+            viewModel.updateCaptureOrientation(orientationTracker.orientation.videoOrientation)
+            #endif
             viewModel.handleAppear()
         }
+        #if os(iOS)
+        .onChange(of: orientationTracker.orientation) { _, newOrientation in
+            viewModel.updateCaptureOrientation(newOrientation.videoOrientation)
+        }
+        #endif
         .onDisappear {
+            #if os(iOS)
+            orientationTracker.stop()
+            SnaprollOrientationController.setPreferredOrientations(.portrait)
+            #endif
             viewModel.handleDisappear()
             Task {
                 await onCaptureCompleted()
@@ -196,7 +215,7 @@ struct V2CaptureView: View {
             if cameraProvider.authorizationState == .authorized, cameraProvider.isPreviewReady {
                 CameraPreviewView(
                     session: cameraProvider.previewSession,
-                    lockedOrientation: isLandscape ? .landscapeRight : .portrait
+                    lockedOrientation: previewVideoOrientation(isLandscapeFallback: isLandscape)
                 )
             } else {
                 cameraPreparingView(message: cameraProvider.statusMessage)
@@ -204,6 +223,14 @@ struct V2CaptureView: View {
         } else {
             developmentSamplePreview(isLandscape: isLandscape)
         }
+    }
+
+    private func previewVideoOrientation(isLandscapeFallback: Bool) -> AVCaptureVideoOrientation {
+        #if os(iOS)
+        return orientationTracker.orientation.videoOrientation
+        #else
+        return isLandscapeFallback ? .landscapeRight : .portrait
+        #endif
     }
 
     private func cameraPreparingView(message: String?) -> some View {

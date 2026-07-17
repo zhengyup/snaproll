@@ -12,18 +12,20 @@ final class PhotoRenderService {
 
     #if canImport(UIKit)
     func renderedImage(for image: UIImage, filmStock: FilmStock, cacheKey: String) -> UIImage {
-        guard let sourceCGImage = cgImage(from: image) else {
+        let normalizedImage = (try? ImageOrientationNormalizer.normalizedImage(from: image)) ?? image
+
+        guard let sourceCGImage = cgImage(from: normalizedImage) else {
             return image
         }
 
         guard let renderedCGImage = renderedCGImage(for: sourceCGImage, filmStock: filmStock, cacheKey: cacheKey) else {
-            return image
+            return normalizedImage
         }
 
         return UIImage(
             cgImage: renderedCGImage,
-            scale: image.scale,
-            orientation: image.imageOrientation
+            scale: normalizedImage.scale,
+            orientation: .up
         )
     }
     #endif

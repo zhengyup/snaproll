@@ -32,10 +32,11 @@ final class PhotoStorageService {
         exposureID: UUID,
         preferredFileExtension: String? = nil
     ) throws -> URL {
-        let fileExtension = preferredFileExtension ?? fileExtension(forImageData: data) ?? "jpg"
+        let normalizedData = try normalizedOriginalImageData(from: data, preferredFileExtension: preferredFileExtension)
+        let fileExtension = normalizedData.fileExtension
         let rollDirectory = try rollDirectoryURL(for: rollID)
         let fileURL = rollDirectory.appendingPathComponent("\(exposureID.uuidString).\(fileExtension)")
-        try data.write(to: fileURL, options: .atomic)
+        try normalizedData.data.write(to: fileURL, options: .atomic)
         return fileURL
     }
 
@@ -96,12 +97,21 @@ final class PhotoStorageService {
     }
 
     func makeUploadJPEGData(from localPath: String) throws -> Data {
-        guard let imageData = loadData(at: localPath),
-              let image = UIImage(data: imageData) else {
+        guard let imageData = loadData(at: localPath) else {
             throw PhotoStorageServiceError.fileNotFound
         }
 
-        let normalizedImage = normalizedImageForUpload(image)
+        if imageData.starts(with: [0xFF, 0xD8, 0xFF]),
+           let image = UIImage(data: imageData),
+           image.imageOrientation == .up {
+            return imageData
+        }
+
+        guard let image = UIImage(data: imageData) else {
+            throw PhotoStorageServiceError.fileNotFound
+        }
+
+        let normalizedImage = try ImageOrientationNormalizer.normalizedImage(from: image)
         guard let jpegData = normalizedImage.jpegData(compressionQuality: AppConfig.Photos.jpegCompressionQuality) else {
             throw PhotoStorageServiceError.compressionFailed
         }
@@ -179,25 +189,38 @@ final class PhotoStorageService {
         return nil
     }
 
-    private func normalizedImageForUpload(_ image: UIImage) -> UIImage {
-        guard image.imageOrientation != .up else {
-            return image
+    private func normalizedOriginalImageData(
+        from data: Data,
+        preferredFileExtension: String?
+    ) throws -> (data: Data, fileExtension: String) {
+        let lowercasedExtension = preferredFileExtension?.lowercased()
+        let inferredExtension = fileExtension(forImageData: data)
+
+        guard let image = UIImage(data: data) else {
+            let fileExtension = lowercasedExtension ?? inferredExtension ?? "jpg"
+            return (data, fileExtension)
         }
 
-        let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = true
-        format.scale = 1
-
-        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
-        return renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: image.size))
+        if image.imageOrientation == .up,
+           data.starts(with: [0xFF, 0xD8, 0xFF]),
+           lowercasedExtension == nil || lowercasedExtension == "jpg" || lowercasedExtension == "jpeg" {
+            return (data, "jpg")
         }
+
+        let normalizedImage = try ImageOrientationNormalizer.normalizedImage(from: image)
+
+        guard let jpegData = normalizedImage.jpegData(compressionQuality: AppConfig.Photos.jpegCompressionQuality) else {
+            throw PhotoStorageServiceError.compressionFailed
+        }
+
+        return (jpegData, "jpg")
     }
 }
 
 enum PhotoStorageServiceError: LocalizedError {
     case compressionFailed
     case fileNotFound
+    case normalizationFailed
 
     var errorDescription: String? {
         switch self {
@@ -205,6 +228,8 @@ enum PhotoStorageServiceError: LocalizedError {
             return "The photo could not be prepared for local storage."
         case .fileNotFound:
             return "The local photo file could not be found."
+        case .normalizationFailed:
+            return "The photo could not be normalized for local storage."
         }
     }
 }

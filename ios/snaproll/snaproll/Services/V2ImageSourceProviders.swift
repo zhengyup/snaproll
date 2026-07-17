@@ -53,6 +53,7 @@ final class DeviceCameraImageSourceProvider: ObservableObject, CameraPreviewImag
     let previewSession: AVCaptureSession
 
     private let cameraService: CameraService
+    private var captureVideoOrientation: AVCaptureVideoOrientation = .portrait
 
     init(cameraService: CameraService? = nil) {
         let service = cameraService ?? CameraService()
@@ -77,8 +78,15 @@ final class DeviceCameraImageSourceProvider: ObservableObject, CameraPreviewImag
         }
     }
 
+    func updateCaptureOrientation(_ orientation: AVCaptureVideoOrientation) {
+        captureVideoOrientation = orientation
+    }
+
     func captureImage() async throws -> CapturedImagePayload {
-        let data = try await cameraService.capturePhoto(flashMode: .off)
+        let data = try await cameraService.capturePhoto(
+            flashMode: .off,
+            videoOrientation: captureVideoOrientation
+        )
         return CapturedImagePayload(data: data, fileExtension: "jpg")
     }
 

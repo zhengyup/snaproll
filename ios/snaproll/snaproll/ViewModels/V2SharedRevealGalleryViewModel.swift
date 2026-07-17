@@ -8,6 +8,8 @@ final class V2SharedRevealGalleryViewModel: ObservableObject {
         let id: UUID
         let exposureNumber: Int
         let image: UIImage?
+        let pixelWidth: CGFloat
+        let pixelHeight: CGFloat
         let renderSeed: String
         let syncState: V2Domain.ExposureSyncState
         let localOriginalPath: String?
@@ -207,6 +209,8 @@ final class V2SharedRevealGalleryViewModel: ObservableObject {
             id: exposure.id,
             exposureNumber: exposure.exposure_number,
             image: nil,
+            pixelWidth: 1,
+            pixelHeight: 1,
             renderSeed: exposure.render_seed,
             syncState: exposure.sync_state,
             localOriginalPath: exposure.local_original_path,
@@ -241,6 +245,8 @@ final class V2SharedRevealGalleryViewModel: ObservableObject {
                 id: exposure.id,
                 exposureNumber: exposure.exposure_number,
                 image: renderedImage,
+                pixelWidth: V2GalleryImageLayout.pixelSize(for: renderedImage.size).width,
+                pixelHeight: V2GalleryImageLayout.pixelSize(for: renderedImage.size).height,
                 renderSeed: exposure.render_seed,
                 syncState: exposure.sync_state,
                 localOriginalPath: localOriginalPath,
@@ -255,6 +261,8 @@ final class V2SharedRevealGalleryViewModel: ObservableObject {
                 id: exposure.id,
                 exposureNumber: exposure.exposure_number,
                 image: sourceImage,
+                pixelWidth: V2GalleryImageLayout.pixelSize(for: sourceImage.size).width,
+                pixelHeight: V2GalleryImageLayout.pixelSize(for: sourceImage.size).height,
                 renderSeed: exposure.render_seed,
                 syncState: exposure.sync_state,
                 localOriginalPath: localOriginalPath,

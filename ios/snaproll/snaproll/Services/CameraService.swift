@@ -115,7 +115,10 @@ final class CameraService {
         }
     }
 
-    func capturePhoto(flashMode: CameraFlashMode) async throws -> Data {
+    func capturePhoto(
+        flashMode: CameraFlashMode,
+        videoOrientation: AVCaptureVideoOrientation? = nil
+    ) async throws -> Data {
         guard authorizationState == .authorized else {
             throw CameraServiceError.notAuthorized
         }
@@ -158,7 +161,7 @@ final class CameraService {
 
                 if let connection = self.photoOutput.connection(with: .video),
                    connection.isVideoOrientationSupported {
-                    connection.videoOrientation = CameraService.currentVideoOrientation
+                    connection.videoOrientation = videoOrientation ?? CameraService.currentVideoOrientation
                 }
 
                 self.photoOutput.capturePhoto(with: settings, delegate: delegate)

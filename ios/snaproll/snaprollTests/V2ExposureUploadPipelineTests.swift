@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import snaproll
 
 @MainActor
@@ -265,6 +266,15 @@ private func makeUploadExposure(
 }
 
 private func samplePNGData() -> Data {
-    let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9l9QAAAABJRU5ErkJggg=="
-    return Data(base64Encoded: base64)!
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1
+    format.opaque = true
+    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8), format: format)
+
+    return renderer.pngData { context in
+        UIColor(red: 0.85, green: 0.22, blue: 0.1, alpha: 1).setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        UIColor(red: 0.1, green: 0.35, blue: 0.9, alpha: 1).setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+    }
 }

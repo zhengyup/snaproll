@@ -106,6 +106,10 @@ final class V2CaptureViewModel: ObservableObject {
         cameraProvider?.retryPermissionFlow()
     }
 
+    func updateCaptureOrientation(_ orientation: AVCaptureVideoOrientation) {
+        cameraProvider?.updateCaptureOrientation(orientation)
+    }
+
     func capture() async {
         guard canCapture, let provider = currentProvider else {
             return

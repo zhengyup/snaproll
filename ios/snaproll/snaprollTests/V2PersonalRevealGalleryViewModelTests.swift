@@ -106,6 +106,43 @@ struct V2PersonalRevealGalleryViewModelTests {
     }
 
     @Test
+    func galleryItemsExposeRenderedImageDimensions() async {
+        let rollID = UUID(uuidString: "BBBBBBBB-2222-2222-2222-222222222222")!
+        let roll = makeGalleryRoll(id: rollID)
+        let portrait = makeGalleryExposure(
+            id: UUID(uuidString: "BBBBBBBB-2222-2222-2222-222222222201")!,
+            rollID: rollID,
+            exposureNumber: 1,
+            renderSeed: "portrait"
+        )
+        portrait.local_original_path = "portrait.jpg"
+        let landscape = makeGalleryExposure(
+            id: UUID(uuidString: "BBBBBBBB-2222-2222-2222-222222222202")!,
+            rollID: rollID,
+            exposureNumber: 2,
+            renderSeed: "landscape"
+        )
+        landscape.local_original_path = "landscape.jpg"
+
+        let viewModel = V2PersonalRevealGalleryViewModel(
+            rollID: rollID,
+            rollRepository: FakeGalleryRollRepository(roll: roll),
+            exposureRepository: FakeGalleryExposureRepository(exposures: [portrait, landscape]),
+            exposureMirrorStore: GalleryMirrorStore(),
+            imageProvider: FakeGalleryImageProvider(imagesByPath: [
+                "portrait.jpg": makeImage(size: CGSize(width: 90, height: 160), color: .red),
+                "landscape.jpg": makeImage(size: CGSize(width: 160, height: 90), color: .blue)
+            ]),
+            renderer: FakeGalleryRenderer()
+        )
+
+        await viewModel.load()
+
+        #expect(viewModel.items[0].pixelHeight > viewModel.items[0].pixelWidth)
+        #expect(viewModel.items[1].pixelWidth > viewModel.items[1].pixelHeight)
+    }
+
+    @Test
     func renderFailureRemainsRecoverable() async {
         let rollID = UUID(uuidString: "AAAAAAAA-1111-1111-1111-111111111111")!
         let roll = makeGalleryRoll(id: rollID)

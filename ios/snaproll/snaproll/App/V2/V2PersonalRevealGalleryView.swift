@@ -2,6 +2,12 @@ import SwiftUI
 
 struct V2PersonalRevealGalleryView: View {
     @StateObject private var viewModel: V2PersonalRevealGalleryViewModel
+    @State private var selectedIndex: Int?
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
 
     init(
         rollID: UUID,
@@ -62,6 +68,18 @@ struct V2PersonalRevealGalleryView: View {
         .task {
             await viewModel.load()
         }
+        .fullScreenCover(item: selectedFullscreenItem) { selectedItem in
+            V2GalleryFullscreenViewer(
+                title: viewModel.title,
+                filmLabel: viewModel.filmLabel,
+                items: viewModel.items.map { $0 as any V2GalleryDisplayItem },
+                selectedIndex: selectedItem.index,
+                participantName: nil,
+                onDismiss: {
+                    selectedIndex = nil
+                }
+            )
+        }
     }
 
     private var headerCard: some View {
@@ -99,81 +117,59 @@ struct V2PersonalRevealGalleryView: View {
                 .padding(.horizontal, 20)
             }
 
-            ForEach(viewModel.items) { item in
-                VStack(alignment: .leading, spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .fill(.black.opacity(0.20))
-
-                        if let image = item.image {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: .infinity)
-                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                .padding(10)
-                        } else {
-                            VStack(spacing: 6) {
-                                Image(systemName: "photo")
-                                    .font(.title2)
-                                Text("Original unavailable")
-                                    .font(.footnote)
-                            }
-                            .foregroundStyle(.white.opacity(0.65))
-                            .padding(24)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Exposure \(item.exposureNumber)")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-
-                        Text(viewModel.title)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.82))
-
-                        Text(viewModel.filmLabel)
-                            .font(.footnote)
-                            .foregroundStyle(.white.opacity(0.64))
-                    }
-
-                    if viewModel.shouldShowDiagnostics {
-                        VStack(alignment: .leading, spacing: 3) {
-                            diagnosticsLine("Render seed", item.renderSeed)
-                            diagnosticsLine("Sync state", item.syncState.rawValue)
-                            diagnosticsLine("Source", item.renderingSource.rawValue)
-                            diagnosticsLine("Original", item.localOriginalAvailable ? "Available" : "Missing")
-
-                            if let duration = item.renderDurationMilliseconds {
-                                diagnosticsLine("Render time", String(format: "%.1f ms", duration))
-                            }
-
-                            if let localOriginalPath = item.localOriginalPath {
-                                diagnosticsLine("Local path", localOriginalPath)
-                            }
-
-                            if let renderError = item.renderError {
-                                Text(renderError)
-                                    .font(.caption2)
-                                    .foregroundStyle(.red.opacity(0.82))
-                            }
-                        }
+            LazyVGrid(columns: columns, alignment: .center, spacing: 10) {
+                ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, item in
+                    V2GalleryThumbnail(
+                        item: item,
+                        placeholderText: "Original unavailable",
+                        showsDiagnostics: viewModel.shouldShowDiagnostics,
+                        diagnostics: diagnostics(for: item)
+                    ) {
+                        selectedIndex = index
                     }
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.white.opacity(0.08))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-                        }
-                )
-                .padding(.horizontal, 20)
             }
+            .padding(.horizontal, 20)
         }
+    }
+
+    private var selectedFullscreenItem: Binding<V2GalleryFullscreenSelection?> {
+        Binding(
+            get: {
+                guard let selectedIndex else {
+                    return nil
+                }
+
+                return V2GalleryFullscreenSelection(index: selectedIndex)
+            },
+            set: { selection in
+                selectedIndex = selection?.index
+            }
+        )
+    }
+
+    private func diagnostics(for item: V2PersonalRevealGalleryViewModel.GalleryItem) -> [V2GalleryDiagnosticLine] {
+        var lines = [
+            V2GalleryDiagnosticLine(title: "Render seed", value: item.renderSeed),
+            V2GalleryDiagnosticLine(title: "Sync state", value: item.syncState.rawValue),
+            V2GalleryDiagnosticLine(title: "Source", value: item.renderingSource.rawValue),
+            V2GalleryDiagnosticLine(title: "Original", value: item.localOriginalAvailable ? "Available" : "Missing"),
+            V2GalleryDiagnosticLine(title: "Dimensions", value: "\(Int(item.pixelWidth)) x \(Int(item.pixelHeight))")
+        ]
+
+        if let duration = item.renderDurationMilliseconds {
+            lines.append(V2GalleryDiagnosticLine(title: "Render time", value: String(format: "%.1f ms", duration)))
+        }
+
+        if let localOriginalPath = item.localOriginalPath {
+            lines.append(V2GalleryDiagnosticLine(title: "Local path", value: localOriginalPath))
+        }
+
+        if let renderError = item.renderError {
+            lines.append(V2GalleryDiagnosticLine(title: "Render error", value: renderError, isError: true))
+        }
+
+        return lines
     }
 
     private func failedCard(message: String) -> some View {
