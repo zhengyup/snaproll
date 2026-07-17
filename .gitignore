@@ -42,7 +42,9 @@ EOF
 .deriveddata-phase13-tests/
 .deriveddata-phase15a-build/
 .deriveddata-phase15a-tests/
-
+.deriveddata-create-roll-redesign/
+.deriveddata-v2-capture-bigger/
+.deriveddata-v2-capture-redesign/
 
 # image testing 
 film-references/
