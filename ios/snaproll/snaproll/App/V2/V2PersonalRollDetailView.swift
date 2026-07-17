@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct V2PersonalRollDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: V2PersonalRollDetailViewModel
     @StateObject private var synchronizer: V2SharedStateSynchronizer
@@ -40,7 +41,8 @@ struct V2PersonalRollDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 12) {
+                topChrome
                 headerCard
                 progressCard
 
@@ -48,25 +50,19 @@ struct V2PersonalRollDetailView: View {
                     participantProgressCard
                 }
 
+                detailRowsCard
+                tipCard
+
                 if viewModel.shouldShowDiagnostics {
                     diagnosticsCard
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
         }
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.08, green: 0.06, blue: 0.05),
-                    Color(red: 0.11, green: 0.09, blue: 0.07)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
-        .navigationTitle(viewModel.roll?.title ?? "Roll")
-        .navigationBarTitleDisplayMode(.inline)
+        .background(detailBackground.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $isShowingCaptureView) {
             if let roll = viewModel.roll {
                 V2CaptureView(
@@ -120,157 +116,180 @@ struct V2PersonalRollDetailView: View {
         }
     }
 
+    private var topChrome: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Text("snaproll")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(detailInk)
+
+                Spacer()
+
+                Image(systemName: "gift")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(detailInk)
+
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.95, green: 0.56, blue: 0.18),
+                                Color(red: 0.13, green: 0.32, blue: 0.38)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 32, height: 32)
+                    .overlay {
+                        Circle().strokeBorder(.white, lineWidth: 2)
+                    }
+            }
+
+            ZStack {
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(detailInk)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(.white.opacity(0.72)))
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Button {} label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(detailInk)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(.white.opacity(0.72)))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(viewModel.roll?.title ?? "Roll")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(detailInk)
+                    .lineLimit(1)
+            }
+        }
+    }
+
     private var headerCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(viewModel.roll?.title ?? "Loading Roll")
-                .font(.title.weight(.semibold))
-                .foregroundStyle(.white)
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .center, spacing: 22) {
+                Image(spriteName)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(width: 132, height: 132)
 
-            Text(viewModel.filmLabel)
-                .font(.headline)
-                .foregroundStyle(.white.opacity(0.75))
+                VStack(alignment: .leading, spacing: 10) {
+                    feelPill
 
-            Text(viewModel.statusLabel)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.6))
+                    Text(viewModel.roll?.title ?? "Loading Roll")
+                        .font(.system(size: 30, weight: .bold, design: .serif))
+                        .foregroundStyle(detailInk)
+                        .lineLimit(2)
 
-            if let currentParticipantDisplayName = viewModel.currentParticipantDisplayName, viewModel.isSharedRoll {
-                Text("Current participant: \(currentParticipantDisplayName)")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.72))
-            }
-
-            if let syncStatus = viewModel.userFacingSyncStatus {
-                Text(syncStatus)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.78))
-            }
-
-            if let sharedReadyMessage = viewModel.sharedReadyMessage {
-                Text(sharedReadyMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.72))
-            }
-
-            if viewModel.shouldShowStartRoll {
-                Button {
-                    Task {
-                        await viewModel.startRoll()
-                        if viewModel.isSharedRoll {
-                            await synchronizer.refreshNow()
-                        }
-                    }
-                } label: {
-                    if viewModel.isStartingRoll {
-                        ProgressView()
-                            .tint(.black)
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("Start Roll")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                    }
+                    Text(feelDescription)
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(detailMuted)
+                        .lineSpacing(3)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.black)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
-                )
-                .disabled(viewModel.isStartingRoll)
             }
 
-            if viewModel.shouldShowCaptureAction {
-                Button {
-                    isShowingCaptureView = true
-                } label: {
-                    Text(viewModel.isSharedRoll ? "Capture Your Next Exposure" : "Capture Next Exposure")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.black)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.92))
-                )
-            }
-
-            if viewModel.shouldShowRevealAction {
-                Button {
-                    Task {
-                        let didReveal = await viewModel.revealRoll()
-                        if viewModel.isSharedRoll {
-                            await synchronizer.refreshNow()
-                        }
-                        if didReveal {
-                            isShowingGalleryView = true
-                        }
-                    }
-                } label: {
-                    if viewModel.isRevealingRoll {
-                        ProgressView()
-                            .tint(.black)
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("Reveal Roll")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.black)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
-                )
-                .disabled(viewModel.isRevealingRoll)
-            }
-
-            if viewModel.shouldShowViewGalleryAction {
-                Button {
-                    isShowingGalleryView = true
-                } label: {
-                    Text("View Gallery")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.black)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.92))
-                )
-            }
+            primaryActionButton
 
             if case .failed(let message) = viewModel.state {
                 Text(message)
                     .font(.footnote)
-                    .foregroundStyle(.red.opacity(0.9))
+                    .foregroundStyle(.red.opacity(0.85))
             }
         }
-        .padding(18)
+        .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
     }
 
     private var progressCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Progress")
-                .font(.headline)
-                .foregroundStyle(.white.opacity(0.95))
+            HStack(spacing: 10) {
+                Image(spriteName)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
 
-            HStack(spacing: 16) {
+                Text("Progress")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(detailInk)
+            }
+
+            HStack(spacing: 0) {
                 progressMetric(title: "Total", value: "\(viewModel.totalExposures)")
+                metricDivider
                 progressMetric(title: "Captured", value: "\(viewModel.capturedExposures)")
+                metricDivider
                 progressMetric(title: "Remaining", value: "\(viewModel.remainingExposures)")
             }
         }
-        .padding(18)
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground)
+    }
+
+    private var detailRowsCard: some View {
+        VStack(spacing: 0) {
+            detailRow(
+                icon: "calendar",
+                title: "Created",
+                value: createdDateLabel
+            )
+
+            rowDivider
+
+            detailRow(
+                icon: "person.2",
+                title: "Participants",
+                value: participantsLabel
+            )
+
+            rowDivider
+
+            detailRow(
+                icon: "lock",
+                title: "Privacy",
+                value: viewModel.isSharedRoll ? "Only invited people can join" : "Only you"
+            )
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(cardBackground)
+    }
+
+    private var tipCard: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(accentColor)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Tip")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(accentColor)
+
+                Text("Once all exposures are captured, your roll will be developed and ready to reveal.")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(detailMuted)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
     }
@@ -616,7 +635,252 @@ struct V2PersonalRollDetailView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardBackground)
+        .background(darkDiagnosticsBackground)
+    }
+
+    @ViewBuilder
+    private var primaryActionButton: some View {
+        if viewModel.shouldShowStartRoll {
+            Button {
+                Task {
+                    await viewModel.startRoll()
+                    if viewModel.isSharedRoll {
+                        await synchronizer.refreshNow()
+                    }
+                }
+            } label: {
+                if viewModel.isStartingRoll {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Start Roll", systemImage: "play.fill")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .padding(.vertical, 17)
+            .background(primaryButtonBackground)
+            .disabled(viewModel.isStartingRoll)
+        } else if viewModel.shouldShowCaptureAction {
+            Button {
+                isShowingCaptureView = true
+            } label: {
+                Label(
+                    viewModel.isSharedRoll ? "Capture Your Next Exposure" : "Capture Next Exposure",
+                    systemImage: "camera.fill"
+                )
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .padding(.vertical, 17)
+            .background(primaryButtonBackground)
+        } else if viewModel.shouldShowRevealAction {
+            Button {
+                Task {
+                    let didReveal = await viewModel.revealRoll()
+                    if viewModel.isSharedRoll {
+                        await synchronizer.refreshNow()
+                    }
+                    if didReveal {
+                        isShowingGalleryView = true
+                    }
+                }
+            } label: {
+                if viewModel.isRevealingRoll {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Reveal Roll", systemImage: "sparkles")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .padding(.vertical, 17)
+            .background(primaryButtonBackground)
+            .disabled(viewModel.isRevealingRoll)
+        } else if viewModel.shouldShowViewGalleryAction {
+            Button {
+                isShowingGalleryView = true
+            } label: {
+                Label("View Roll", systemImage: "photo.on.rectangle.angled")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .padding(.vertical, 17)
+            .background(primaryButtonBackground)
+        }
+    }
+
+    private var feelPill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: isWarmRoll ? "sun.max" : "snowflake")
+                .font(.system(size: 12, weight: .semibold))
+
+            Text(viewModel.filmLabel)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(accentColor)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            Capsule(style: .continuous)
+                .fill(accentColor.opacity(0.1))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(accentColor.opacity(0.16), lineWidth: 1)
+                }
+        )
+    }
+
+    private func detailRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(accentColor)
+                .frame(width: 34, height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(accentColor.opacity(0.1))
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(detailInk)
+
+                Text(value)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(detailMuted)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(red: 0.68, green: 0.62, blue: 0.56))
+        }
+        .padding(.vertical, 12)
+    }
+
+    private var metricDivider: some View {
+        Rectangle()
+            .fill(Color(red: 0.93, green: 0.86, blue: 0.78))
+            .frame(width: 1, height: 56)
+    }
+
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(Color(red: 0.93, green: 0.86, blue: 0.78))
+            .frame(height: 1)
+            .padding(.leading, 48)
+    }
+
+    private var primaryButtonBackground: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: isWarmRoll
+                        ? [Color(red: 1.0, green: 0.39, blue: 0.02), Color(red: 0.9, green: 0.24, blue: 0.02)]
+                        : [Color(red: 0.2, green: 0.62, blue: 1.0), Color(red: 0.03, green: 0.42, blue: 0.92)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .shadow(color: accentColor.opacity(0.22), radius: 12, y: 7)
+    }
+
+    private var detailBackground: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 1.0, green: 0.985, blue: 0.96),
+                Color(red: 0.99, green: 0.95, blue: 0.9)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(.white.opacity(0.72))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(red: 0.95, green: 0.88, blue: 0.8), lineWidth: 1)
+            }
+            .shadow(color: Color(red: 0.38, green: 0.2, blue: 0.08).opacity(0.05), radius: 10, y: 4)
+    }
+
+    private var darkDiagnosticsBackground: some View {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+            .fill(Color(red: 0.08, green: 0.06, blue: 0.05).opacity(0.94))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            }
+    }
+
+    private var spriteName: String {
+        let family = isWarmRoll ? "flame" : "ice"
+
+        switch viewModel.roll?.status {
+        case .revealed, .readyToReveal:
+            return "completed_\(family)"
+        case .waitingForParticipants:
+            return "waiting_\(family)"
+        default:
+            return "started_\(family)"
+        }
+    }
+
+    private var isWarmRoll: Bool {
+        viewModel.roll?.film_stock_id != FilmStock.fujifilmSuperia400.rawValue
+    }
+
+    private var accentColor: Color {
+        isWarmRoll
+            ? Color(red: 0.95, green: 0.32, blue: 0.02)
+            : Color(red: 0.12, green: 0.56, blue: 1.0)
+    }
+
+    private var detailInk: Color {
+        Color(red: 0.12, green: 0.1, blue: 0.09)
+    }
+
+    private var detailMuted: Color {
+        Color(red: 0.44, green: 0.4, blue: 0.36)
+    }
+
+    private var feelDescription: String {
+        isWarmRoll
+            ? "A warm roll for everyday moments and memories."
+            : "A cool roll for crisp moments and quiet memories."
+    }
+
+    private var createdDateLabel: String {
+        guard let createdAt = viewModel.roll?.created_at else {
+            return "Loading"
+        }
+
+        return createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var participantsLabel: String {
+        if viewModel.isSharedRoll {
+            let count = max(viewModel.participants.count, 1)
+            return "\(count) joined"
+        }
+
+        return "Only you"
     }
 
     private func diagnosticsSummaryLine(title: String, value: String) -> some View {
@@ -633,36 +897,31 @@ struct V2PersonalRollDetailView: View {
     }
 
     private func progressMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 5) {
             Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.6))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(detailMuted)
 
             Text(value)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundStyle(title == "Captured" ? detailInk : accentColor)
+
+            Text("exposures")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(detailMuted)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func capsuleLabel(_ label: String) -> some View {
         Text(label)
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.black)
+            .foregroundStyle(accentColor)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+                    .fill(accentColor.opacity(0.12))
             )
-    }
-
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(.white.opacity(0.08))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-            }
     }
 }

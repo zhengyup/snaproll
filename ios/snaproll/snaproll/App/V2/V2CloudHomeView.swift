@@ -94,7 +94,7 @@ struct V2CloudHomeView: View {
                 .ignoresSafeArea()
             )
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $isShowingCreateRoll) {
+            .navigationDestination(isPresented: $isShowingCreateRoll) {
                 V2CloudCreateRollView(
                     draftTitle: $viewModel.draftTitle,
                     selectedCreationType: $viewModel.selectedCreationType,
@@ -337,171 +337,159 @@ private struct V2CloudCreateRollView: View {
     let onCreate: () async -> Bool
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Create Roll")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.10, green: 0.10, blue: 0.10))
-
-                        Text("Choose a name, type, and exposure count.")
-                            .font(.subheadline)
-                            .foregroundStyle(Color.black.opacity(0.55))
-                    }
-                    .padding(.top, 22)
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Roll Name")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
-
-                        TextField("Untitled Roll", text: $draftTitle)
-                            .textInputAutocapitalization(.words)
-                            .disableAutocorrection(true)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 18)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(.white.opacity(0.72))
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
-                            }
-                            .foregroundStyle(Color(red: 0.12, green: 0.11, blue: 0.10))
-                    }
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Choose Roll Type")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
-
-                            Text("Pick the vibe for your roll.")
-                                .font(.subheadline)
-                                .foregroundStyle(Color.black.opacity(0.52))
-                        }
-
-                        HStack(spacing: 14) {
-                            V2RollStyleSelectionCard(
-                                filmStock: .kodakGold200,
-                                selectedFilmStock: $selectedFilmStock
-                            )
-
-                            V2RollStyleSelectionCard(
-                                filmStock: .fujifilmSuperia400,
-                                selectedFilmStock: $selectedFilmStock
-                            )
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Exposures")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
-
-                            Text("Choose how many shots are on this roll.")
-                                .font(.subheadline)
-                                .foregroundStyle(Color.black.opacity(0.52))
-                        }
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(AppConfig.V2.createRollExposureCounts, id: \.self) { count in
-                                    V2ExposureSelectionPill(
-                                        count: count,
-                                        isSelected: selectedExposureCount == count,
-                                        accent: selectedFilmStock.createRollAccent
-                                    ) {
-                                        selectedExposureCount = count
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 1)
-                        }
-                    }
-
-                    Button {
-                        Task {
-                            let didCreate = await onCreate()
-                            if didCreate {
-                                dismiss()
-                            }
-                        }
-                    } label: {
-                        if isCreating {
-                            ProgressView()
-                                .tint(.white)
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text("Create Roll")
-                                .font(.title3.weight(.bold))
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white)
-                    .padding(.vertical, 18)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(selectedFilmStock.createRollAccent)
-                    )
-                    .disabled(isCreating)
-                    .padding(.top, 6)
-                }
-                .padding(.horizontal, 32)
-                .padding(.bottom, 28)
-            }
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.995, green: 0.976, blue: 0.94),
-                        Color(red: 0.965, green: 0.94, blue: 0.90)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-            )
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack {
                     Button {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 20, weight: .medium))
                             .foregroundStyle(Color(red: 0.92, green: 0.29, blue: 0.02))
+                            .frame(width: 44, height: 44)
+                            .background(.white.opacity(0.68), in: Circle())
                     }
+                    .buttonStyle(.plain)
                     .disabled(isCreating)
+
+                    Spacer()
+                }
+                .padding(.top, 10)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Create Roll")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(red: 0.10, green: 0.10, blue: 0.10))
+
+                    Text("Choose a name, type, and exposure count.")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.black.opacity(0.55))
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Color(red: 0.92, green: 0.29, blue: 0.02))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(.white.opacity(0.62), in: Capsule())
-                    .overlay {
-                        Capsule()
-                            .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
-                    }
-                    .disabled(isCreating)
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Roll Name")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
+
+                    TextField("Untitled Roll", text: $draftTitle)
+                        .textInputAutocapitalization(.words)
+                        .disableAutocorrection(true)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(.white.opacity(0.72))
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
+                        }
+                        .foregroundStyle(Color(red: 0.12, green: 0.11, blue: 0.10))
                 }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Choose Roll Type")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
+
+                        Text("Pick the vibe for your roll.")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.black.opacity(0.52))
+                    }
+
+                    HStack(spacing: 14) {
+                        V2RollStyleSelectionCard(
+                            filmStock: .kodakGold200,
+                            selectedFilmStock: $selectedFilmStock
+                        )
+
+                        V2RollStyleSelectionCard(
+                            filmStock: .fujifilmSuperia400,
+                            selectedFilmStock: $selectedFilmStock
+                        )
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Exposures")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
+
+                        Text("Choose how many shots are on this roll.")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.black.opacity(0.52))
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(AppConfig.V2.createRollExposureCounts, id: \.self) { count in
+                                V2ExposureSelectionPill(
+                                    count: count,
+                                    isSelected: selectedExposureCount == count,
+                                    accent: selectedFilmStock.createRollAccent
+                                ) {
+                                    selectedExposureCount = count
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 1)
+                    }
+                }
+
+                Button {
+                    Task {
+                        let didCreate = await onCreate()
+                        if didCreate {
+                            dismiss()
+                        }
+                    }
+                } label: {
+                    if isCreating {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Create Roll")
+                            .font(.title3.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .padding(.vertical, 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(selectedFilmStock.createRollAccent)
+                )
+                .disabled(isCreating)
+                .padding(.top, 6)
             }
-            .onAppear {
-                selectedCreationType = .personal
-                if !FilmStock.allCases.contains(selectedFilmStock) {
-                    selectedFilmStock = .kodakGold200
-                }
-                if !AppConfig.V2.createRollExposureCounts.contains(selectedExposureCount),
-                   let defaultCount = AppConfig.V2.createRollExposureCounts.first {
-                    selectedExposureCount = defaultCount
-                }
+            .padding(.horizontal, 32)
+            .padding(.bottom, 28)
+        }
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.995, green: 0.976, blue: 0.94),
+                    Color(red: 0.965, green: 0.94, blue: 0.90)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            selectedCreationType = .personal
+            if !FilmStock.allCases.contains(selectedFilmStock) {
+                selectedFilmStock = .kodakGold200
+            }
+            if !AppConfig.V2.createRollExposureCounts.contains(selectedExposureCount),
+               let defaultCount = AppConfig.V2.createRollExposureCounts.first {
+                selectedExposureCount = defaultCount
             }
         }
     }
