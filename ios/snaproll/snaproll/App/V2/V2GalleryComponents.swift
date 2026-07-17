@@ -29,6 +29,7 @@ struct V2GalleryThumbnail<Item: V2GalleryDisplayItem>: View {
     let placeholderText: String
     let showsDiagnostics: Bool
     let diagnostics: [V2GalleryDiagnosticLine]
+    var exposureLabelColor: Color = .black.opacity(0.62)
     let action: () -> Void
 
     var body: some View {
@@ -37,7 +38,7 @@ struct V2GalleryThumbnail<Item: V2GalleryDisplayItem>: View {
                 GeometryReader { geometry in
                     ZStack {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.black.opacity(0.32))
+                            .fill(Color(red: 0.10, green: 0.09, blue: 0.08))
 
                         if let image = item.image {
                             Image(uiImage: image)
@@ -69,7 +70,7 @@ struct V2GalleryThumbnail<Item: V2GalleryDisplayItem>: View {
                 HStack(spacing: 4) {
                     Text("\(item.exposureNumber)")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.82))
+                        .foregroundStyle(exposureLabelColor)
 
                     Spacer(minLength: 0)
                 }
@@ -79,7 +80,7 @@ struct V2GalleryThumbnail<Item: V2GalleryDisplayItem>: View {
                         ForEach(diagnostics) { line in
                             Text("\(line.title): \(line.value)")
                                 .font(.caption2.monospaced())
-                                .foregroundStyle(line.isError ? .red.opacity(0.82) : .white.opacity(0.62))
+                                .foregroundStyle(line.isError ? .red.opacity(0.82) : .black.opacity(0.48))
                                 .lineLimit(2)
                                 .textSelection(.enabled)
                         }
@@ -89,14 +90,79 @@ struct V2GalleryThumbnail<Item: V2GalleryDisplayItem>: View {
             .padding(7)
             .background(
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(.white.opacity(0.075))
+                    .fill(.white.opacity(0.78))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                            .strokeBorder(.black.opacity(0.05), lineWidth: 1)
                     }
+                    .shadow(color: .black.opacity(0.055), radius: 10, x: 0, y: 5)
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct V2GalleryAdaptiveRows<Item: V2GalleryDisplayItem>: View {
+    let items: [Item]
+    let placeholderText: String
+    let showsDiagnostics: Bool
+    let diagnostics: (Item) -> [V2GalleryDiagnosticLine]
+    let onSelect: (Int) -> Void
+
+    private var rows: [V2GalleryImageLayout.Row] {
+        V2GalleryImageLayout.rows(
+            for: items.map { CGSize(width: $0.pixelWidth, height: $0.pixelHeight) }
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                switch row {
+                case .landscape(let index):
+                    landscapeRow(index: index)
+                case .portraitPair(let firstIndex, let secondIndex):
+                    portraitRow(firstIndex: firstIndex, secondIndex: secondIndex)
+                }
+            }
+        }
+    }
+
+    private func landscapeRow(index: Int) -> some View {
+        V2GalleryThumbnail(
+            item: items[index],
+            placeholderText: placeholderText,
+            showsDiagnostics: showsDiagnostics,
+            diagnostics: diagnostics(items[index])
+        ) {
+            onSelect(index)
+        }
+    }
+
+    private func portraitRow(firstIndex: Int, secondIndex: Int?) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            V2GalleryThumbnail(
+                item: items[firstIndex],
+                placeholderText: placeholderText,
+                showsDiagnostics: showsDiagnostics,
+                diagnostics: diagnostics(items[firstIndex])
+            ) {
+                onSelect(firstIndex)
+            }
+
+            if let secondIndex {
+                V2GalleryThumbnail(
+                    item: items[secondIndex],
+                    placeholderText: placeholderText,
+                    showsDiagnostics: showsDiagnostics,
+                    diagnostics: diagnostics(items[secondIndex])
+                ) {
+                    onSelect(secondIndex)
+                }
+            } else {
+                Color.clear
+            }
+        }
     }
 }
 

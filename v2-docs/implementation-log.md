@@ -2562,3 +2562,73 @@ Supporting V2 domain types:
 - Production HTTPS Universal Links are prepared in code but not fully enabled until the production invite domain, Associated Domains entitlement, and AASA file exist.
 - Invite routing state is intentionally in-memory; iOS should deliver the opening URL at launch, after which the coordinator retains it through bootstrap.
 - Manual token entry is retained for developer/debug workflows only.
+
+## 2026-07-18 — Storage Upload Retry RLS Fix
+
+### Context
+
+- Device testing exposed a sync failure during exposure upload:
+  - `new row violates row-level security policy`
+- This occurred before metadata completion, so the backend never reached `complete_exposure()` for the affected exposure.
+- The Phase 9A Storage policy allowed authenticated participants to `INSERT` pending exposure originals, but the iOS Storage client uploads with `upsert` enabled.
+- A retry after a partial upload can therefore take the Storage `UPDATE` path, which had no policy/grant.
+
+### Migration added
+
+- `supabase/migrations/20260718002000_phase_14_storage_upload_retry_policy.sql`
+
+### Changes
+
+- Grants `UPDATE` on `storage.objects` to `authenticated`.
+- Adds a Storage `UPDATE` policy for retrying pending Snaproll original uploads.
+- The policy reuses `public.can_upload_snaproll_original(...)`, so updates are allowed only when:
+  - the bucket is `snaproll-originals`
+  - the object path matches the canonical exposure path
+  - the authenticated user owns the participant for that exposure
+  - the exposure is still empty in `public.exposures`
+  - the roll is still `SHOOTING`
+
+### Safety notes
+
+- Once `complete_exposure()` stores `exposures.storage_path`, the helper returns false and replacement is blocked.
+- Deletes remain unsupported.
+- This does not change capture, metadata completion, reveal, or gallery logic.
+- Apply with `supabase db push` before retesting device sync.
+
+## 2026-07-18 — Storage Upsert Pending Select RLS Fix
+
+### Context
+
+- After applying the retry `UPDATE` policy, device uploads still failed with:
+  - `new row violates row-level security policy`
+- A SQL diagnostic confirmed that:
+  - the roll was `SHOOTING`
+  - the exposure rows were empty
+  - the canonical object paths were correct
+  - `public.can_upload_snaproll_original(...)` returned `true`
+  - the objects did not already exist
+- This indicated the business policy was valid, but Supabase Storage's `upsert` upload path still needed pending-object `SELECT` visibility.
+
+### Migration added
+
+- `supabase/migrations/20260718003500_phase_14_storage_pending_select_policy.sql`
+
+### Changes
+
+- Adds a narrow `SELECT` policy on `storage.objects`:
+  - `participants can inspect own pending snaproll originals`
+- The policy reuses `public.can_upload_snaproll_original(...)`, so pending-object SELECT is allowed only when:
+  - the bucket is `snaproll-originals`
+  - the object path is the canonical exposure path
+  - the authenticated user owns the participant for that exposure
+  - the exposure is still empty
+  - the roll is still `SHOOTING`
+
+### Safety notes
+
+- The bucket remains private.
+- This does not make pending originals globally readable.
+- Other participants cannot read another participant's pending uploads.
+- Revealed-roll reads continue to use the existing revealed-read policy.
+- This policy exists to support idempotent Storage upsert behavior without weakening the canonical exposure ownership rules.
+- Apply with `supabase db push` before retesting `Continue Developing`.

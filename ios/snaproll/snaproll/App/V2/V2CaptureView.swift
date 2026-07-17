@@ -5,7 +5,7 @@ struct V2CaptureView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: V2CaptureViewModel
     #if os(iOS)
-    @StateObject private var orientationTracker = CaptureOrientationTracker()
+    @State private var orientationTracker = CaptureOrientationTracker()
     #endif
     private let onCaptureCompleted: () async -> Void
 
@@ -36,16 +36,10 @@ struct V2CaptureView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isLandscape = proxy.size.width > proxy.size.height
-
             ZStack {
                 cameraBackground
 
-                if isLandscape {
-                    landscapeCameraLayout(size: proxy.size)
-                } else {
-                    portraitCameraLayout(size: proxy.size)
-                }
+                fixedCameraLayout(size: proxy.size)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
@@ -53,22 +47,21 @@ struct V2CaptureView: View {
         .toolbar(.hidden, for: .navigationBar)
         .statusBarHidden()
         #if os(iOS)
-        .snaprollPreferredOrientations([.portrait, .landscapeLeft, .landscapeRight])
+        .snaprollPreferredOrientations(.portrait)
         #endif
         .onAppear {
             #if os(iOS)
+            orientationTracker.onOrientationChange = { orientation in
+                viewModel.updateCaptureOrientation(orientation.videoOrientation)
+            }
             orientationTracker.start()
             viewModel.updateCaptureOrientation(orientationTracker.orientation.videoOrientation)
             #endif
             viewModel.handleAppear()
         }
-        #if os(iOS)
-        .onChange(of: orientationTracker.orientation) { _, newOrientation in
-            viewModel.updateCaptureOrientation(newOrientation.videoOrientation)
-        }
-        #endif
         .onDisappear {
             #if os(iOS)
+            orientationTracker.onOrientationChange = nil
             orientationTracker.stop()
             SnaprollOrientationController.setPreferredOrientations(.portrait)
             #endif
@@ -125,7 +118,7 @@ struct V2CaptureView: View {
         }
     }
 
-    private func portraitCameraLayout(size: CGSize) -> some View {
+    private func fixedCameraLayout(size: CGSize) -> some View {
         VStack(spacing: 14) {
             HStack(spacing: 14) {
                 closeButton
@@ -215,7 +208,7 @@ struct V2CaptureView: View {
             if cameraProvider.authorizationState == .authorized, cameraProvider.isPreviewReady {
                 CameraPreviewView(
                     session: cameraProvider.previewSession,
-                    lockedOrientation: previewVideoOrientation(isLandscapeFallback: isLandscape)
+                    lockedOrientation: .portrait
                 )
             } else {
                 cameraPreparingView(message: cameraProvider.statusMessage)
@@ -223,14 +216,6 @@ struct V2CaptureView: View {
         } else {
             developmentSamplePreview(isLandscape: isLandscape)
         }
-    }
-
-    private func previewVideoOrientation(isLandscapeFallback: Bool) -> AVCaptureVideoOrientation {
-        #if os(iOS)
-        return orientationTracker.orientation.videoOrientation
-        #else
-        return isLandscapeFallback ? .landscapeRight : .portrait
-        #endif
     }
 
     private func cameraPreparingView(message: String?) -> some View {

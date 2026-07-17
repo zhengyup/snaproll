@@ -76,6 +76,91 @@ struct V2MixedOrientationGalleryTests {
     }
 
     @Test
+    func allPortraitRollUsesPortraitPairRows() {
+        let rows = V2GalleryImageLayout.rows(for: repeatedPortraits(count: 12))
+
+        #expect(rows.count == 6)
+        #expect(rows.allSatisfy { row in
+            if case .portraitPair(_, let second) = row {
+                return second != nil
+            }
+
+            return false
+        })
+    }
+
+    @Test
+    func allLandscapeRollUsesFullWidthLandscapeRows() {
+        let rows = V2GalleryImageLayout.rows(for: repeatedLandscapes(count: 12))
+
+        #expect(rows.count == 12)
+        #expect(rows.allSatisfy { row in
+            if case .landscape = row {
+                return true
+            }
+
+            return false
+        })
+    }
+
+    @Test
+    func alternatingPortraitLandscapePreservesCaptureOrderWithoutOverlap() {
+        let sizes = (0..<12).map { index in
+            index.isMultiple(of: 2)
+                ? CGSize(width: 100, height: 150)
+                : CGSize(width: 150, height: 100)
+        }
+
+        let flattenedIndices = V2GalleryImageLayout.rows(for: sizes).flatMap { row -> [Int] in
+            switch row {
+            case .landscape(let index):
+                return [index]
+            case .portraitPair(let first, let second):
+                if let second {
+                    return [first, second]
+                }
+
+                return [first]
+            }
+        }
+
+        #expect(flattenedIndices == Array(0..<12))
+        #expect(Set(flattenedIndices).count == 12)
+    }
+
+    @Test
+    func mixedOrientationRollUsesBothRowTemplates() {
+        let rows = V2GalleryImageLayout.rows(for: [
+            CGSize(width: 150, height: 100),
+            CGSize(width: 100, height: 150),
+            CGSize(width: 100, height: 150),
+            CGSize(width: 150, height: 100)
+        ])
+
+        #expect(rows == [.landscape(0), .portraitPair(1, 2), .landscape(3)])
+    }
+
+    @Test
+    func supportedExposureCountsProduceCompleteLayouts() {
+        for count in [12, 24, 36] {
+            let sizes = (0..<count).map { index in
+                index % 3 == 0 ? CGSize(width: 150, height: 100) : CGSize(width: 100, height: 150)
+            }
+            let rows = V2GalleryImageLayout.rows(for: sizes)
+            let laidOutCount = rows.reduce(0) { partialResult, row in
+                switch row {
+                case .landscape:
+                    return partialResult + 1
+                case .portraitPair(_, let second):
+                    return partialResult + (second == nil ? 1 : 2)
+                }
+            }
+
+            #expect(laidOutCount == count)
+        }
+    }
+
+    @Test
     func dimensionHandlingClampsInvalidZeroDimensionsSafely() {
         let size = V2GalleryImageLayout.pixelSize(for: .zero)
 
@@ -113,5 +198,13 @@ struct V2MixedOrientationGalleryTests {
         }
 
         return UIImage(cgImage: cgImage, scale: 1, orientation: orientation)
+    }
+
+    private func repeatedPortraits(count: Int) -> [CGSize] {
+        Array(repeating: CGSize(width: 100, height: 150), count: count)
+    }
+
+    private func repeatedLandscapes(count: Int) -> [CGSize] {
+        Array(repeating: CGSize(width: 150, height: 100), count: count)
     }
 }

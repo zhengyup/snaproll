@@ -4,11 +4,6 @@ struct V2PersonalRevealGalleryView: View {
     @StateObject private var viewModel: V2PersonalRevealGalleryViewModel
     @State private var selectedIndex: Int?
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
-    ]
-
     init(
         rollID: UUID,
         dependencies: V2DependencyContainer
@@ -31,8 +26,8 @@ struct V2PersonalRevealGalleryView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     ProgressView("Loading revealed gallery")
-                        .tint(.white)
-                        .foregroundStyle(.white.opacity(0.82))
+                        .tint(Color(red: 0.88, green: 0.32, blue: 0.05))
+                        .foregroundStyle(Color(red: 0.42, green: 0.35, blue: 0.29))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
                 case .failed(let message):
@@ -46,8 +41,8 @@ struct V2PersonalRevealGalleryView: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color(red: 0.08, green: 0.06, blue: 0.05),
-                    Color(red: 0.11, green: 0.09, blue: 0.07)
+                    Color(red: 1.00, green: 0.985, blue: 0.955),
+                    Color(red: 0.965, green: 0.925, blue: 0.875)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -86,11 +81,11 @@ struct V2PersonalRevealGalleryView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(viewModel.title)
                 .font(.title.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.09))
 
             Text(viewModel.filmLabel)
                 .font(.headline)
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(Color(red: 0.50, green: 0.42, blue: 0.34))
         }
         .padding(.horizontal, 20)
     }
@@ -108,28 +103,36 @@ struct V2PersonalRevealGalleryView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.black)
+                .foregroundStyle(.white)
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+                        .fill(Color(red: 0.88, green: 0.32, blue: 0.05))
                 )
                 .padding(.horizontal, 20)
             }
 
-            LazyVGrid(columns: columns, alignment: .center, spacing: 10) {
-                ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, item in
-                    V2GalleryThumbnail(
-                        item: item,
-                        placeholderText: "Original unavailable",
-                        showsDiagnostics: viewModel.shouldShowDiagnostics,
-                        diagnostics: diagnostics(for: item)
-                    ) {
-                        selectedIndex = index
-                    }
+            VStack(spacing: 18) {
+                V2GalleryAdaptiveRows(
+                    items: viewModel.items,
+                    placeholderText: "Original unavailable",
+                    showsDiagnostics: viewModel.shouldShowDiagnostics,
+                    diagnostics: diagnostics(for:)
+                ) { index in
+                    selectedIndex = index
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(18)
+            .background(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(Color.white.opacity(0.58))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .strokeBorder(Color.black.opacity(0.045), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.06), radius: 22, x: 0, y: 10)
+            )
+            .padding(.horizontal, 16)
         }
     }
 
@@ -176,11 +179,11 @@ struct V2PersonalRevealGalleryView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Unable to load gallery")
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.09))
 
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(Color(red: 0.42, green: 0.35, blue: 0.29))
 
             Button("Retry") {
                 Task {
@@ -193,11 +196,11 @@ struct V2PersonalRevealGalleryView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.white.opacity(0.08))
+                .fill(.white.opacity(0.72))
         )
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                .strokeBorder(.black.opacity(0.06), lineWidth: 1)
         }
         .padding(.horizontal, 20)
     }

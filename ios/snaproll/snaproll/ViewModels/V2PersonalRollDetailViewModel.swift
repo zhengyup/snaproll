@@ -186,6 +186,28 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         roll?.status == .revealed
     }
 
+    var shouldShowDevelopingState: Bool {
+        guard roll?.status == .shooting, totalExposures > 0 else {
+            return false
+        }
+
+        return remainingExposures == 0
+    }
+
+    var shouldShowUserRetrySyncAction: Bool {
+        shouldShowDevelopingState && failedSyncExposureCount > 0 && syncRunner != nil
+    }
+
+    var latestSyncFailureMessage: String? {
+        mirroredExposures
+            .filter { $0.sync_state == .failed }
+            .sorted { $0.updated_at > $1.updated_at }
+            .compactMap { exposure in
+                exposure.last_error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .first { !$0.isEmpty }
+    }
+
     var sharedReadyMessage: String? {
         guard isSharedRoll else {
             return nil
@@ -299,7 +321,7 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
 
     var userFacingSyncStatus: String? {
         if isSynchronizing {
-            return "Syncing…"
+            return "Developing your roll…"
         }
 
         if roll?.status == .readyToReveal {
@@ -307,19 +329,23 @@ final class V2PersonalRollDetailViewModel: ObservableObject {
         }
 
         if failedSyncExposureCount > 0 {
-            return diagnosticsEnabled ? "Sync failed" : "Waiting for upload…"
+            return diagnosticsEnabled ? "Sync failed" : "Development paused. Try again."
         }
 
         if mirroredExposures.contains(where: { $0.sync_state == .metadataPending }) {
-            return "Syncing…"
+            return "Finishing development…"
         }
 
         if mirroredExposures.contains(where: { $0.sync_state == .uploading }) {
-            return "Uploading…"
+            return "Developing your roll…"
         }
 
         if mirroredExposures.contains(where: { $0.sync_state == .localOnly }) {
-            return "Waiting for upload…"
+            return "Waiting to develop…"
+        }
+
+        if shouldShowDevelopingState {
+            return "Waiting for the roll to finish developing…"
         }
 
         return nil

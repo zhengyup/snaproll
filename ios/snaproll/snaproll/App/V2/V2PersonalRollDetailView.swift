@@ -205,6 +205,40 @@ struct V2PersonalRollDetailView: View {
 
             primaryActionButton
 
+            if let syncStatus = viewModel.userFacingSyncStatus {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        if viewModel.isSynchronizing {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(accentColor)
+                        } else {
+                            Image(systemName: viewModel.shouldShowRevealAction ? "sparkles" : "hourglass")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+
+                        Text(syncStatus)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    }
+
+                    if let failureMessage = viewModel.latestSyncFailureMessage {
+                        Text(failureMessage)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .lineLimit(3)
+                            .foregroundStyle(detailMuted)
+                    } else {
+                        EmptyView()
+                    }
+                }
+                .foregroundStyle(accentColor)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(accentColor.opacity(0.1))
+                )
+            }
+
             if case .failed(let message) = viewModel.state {
                 Text(message)
                     .font(.footnote)
@@ -718,6 +752,41 @@ struct V2PersonalRollDetailView: View {
             .foregroundStyle(.white)
             .padding(.vertical, 17)
             .background(primaryButtonBackground)
+        } else if viewModel.shouldShowUserRetrySyncAction {
+            Button {
+                Task {
+                    await viewModel.retryFailedSynchronization()
+                    if viewModel.isSharedRoll {
+                        await synchronizer.refreshNow()
+                    }
+                }
+            } label: {
+                Label("Continue Developing", systemImage: "arrow.clockwise")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .padding(.vertical, 17)
+            .background(primaryButtonBackground)
+            .disabled(viewModel.isSynchronizing)
+        } else if viewModel.shouldShowDevelopingState {
+            HStack(spacing: 10) {
+                if viewModel.isSynchronizing {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 16, weight: .bold))
+                }
+
+                Text("Developing Roll")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+            }
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(.white)
+            .padding(.vertical, 17)
+            .background(primaryButtonBackground.opacity(0.72))
         }
     }
 

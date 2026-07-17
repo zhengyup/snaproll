@@ -205,6 +205,93 @@ struct V2PersonalRollDetailViewModelTests {
     }
 
     @Test
+    func fullyCapturedShootingRollShowsDevelopingStateUntilBackendIsReadyToReveal() async {
+        let rollID = UUID(uuidString: "EFEFEFEF-0000-0000-0000-000000000003")!
+        let exposureID = UUID(uuidString: "EFEFEFEF-0000-0000-0000-000000000103")!
+        let pendingExposure = makeExposure(
+            id: exposureID,
+            rollID: rollID,
+            exposureNumber: 1,
+            renderSeed: "developing-seed",
+            syncState: .metadataPending
+        )
+        pendingExposure.local_original_path = "/tmp/developing.jpg"
+        pendingExposure.cloud_storage_path = pendingExposure.canonicalCloudStoragePath
+
+        let mirrorStore = InMemoryExposureMirrorStore()
+        try? await mirrorStore.saveExposure(pendingExposure)
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1))
+            ]),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [
+                .success([
+                    makeExposure(
+                        id: exposureID,
+                        rollID: rollID,
+                        exposureNumber: 1,
+                        renderSeed: "developing-seed"
+                    )
+                ])
+            ]),
+            exposureMirrorStore: mirrorStore,
+            diagnosticsEnabled: false
+        )
+
+        await viewModel.load()
+
+        #expect(viewModel.remainingExposures == 0)
+        #expect(viewModel.shouldShowDevelopingState)
+        #expect(viewModel.shouldShowRevealAction == false)
+        #expect(viewModel.userFacingSyncStatus != nil)
+    }
+
+    @Test
+    func failedFullyCapturedRollOffersUserRetrySyncAction() async {
+        let rollID = UUID(uuidString: "EFEFEFEF-0000-0000-0000-000000000004")!
+        let exposureID = UUID(uuidString: "EFEFEFEF-0000-0000-0000-000000000104")!
+        let failedExposure = makeExposure(
+            id: exposureID,
+            rollID: rollID,
+            exposureNumber: 1,
+            renderSeed: "failed-developing-seed",
+            syncState: .failed
+        )
+        failedExposure.local_original_path = "/tmp/failed-developing.jpg"
+        failedExposure.last_error = "Storage upload was rejected by policy."
+
+        let mirrorStore = InMemoryExposureMirrorStore()
+        try? await mirrorStore.saveExposure(failedExposure)
+        let viewModel = V2PersonalRollDetailViewModel(
+            rollID: rollID,
+            rollRepository: FakeDetailRollRepository(fetchRollResults: [
+                .success(makeRoll(id: rollID, status: .shooting, exposures: 1))
+            ]),
+            exposureRepository: FakeDetailExposureRepository(fetchByRollResults: [
+                .success([
+                    makeExposure(
+                        id: exposureID,
+                        rollID: rollID,
+                        exposureNumber: 1,
+                        renderSeed: "failed-developing-seed"
+                    )
+                ])
+            ]),
+            exposureMirrorStore: mirrorStore,
+            syncRunner: RecordingExposureSyncRunner(),
+            diagnosticsEnabled: false
+        )
+
+        await viewModel.load()
+
+        #expect(viewModel.shouldShowDevelopingState)
+        #expect(viewModel.shouldShowUserRetrySyncAction)
+        #expect(viewModel.userFacingSyncStatus == "Development paused. Try again.")
+        #expect(viewModel.latestSyncFailureMessage == "Storage upload was rejected by policy.")
+    }
+
+    @Test
     func revealInvokesRepositoryAndRefreshesRollState() async {
         let rollID = UUID(uuidString: "ABABABAB-0000-0000-0000-000000000001")!
         let rollRepository = FakeDetailRollRepository(fetchRollResults: [

@@ -1,5 +1,4 @@
 import AVFoundation
-import Combine
 import Foundation
 
 #if os(iOS)
@@ -51,8 +50,9 @@ enum CaptureDeviceOrientation: Equatable, Sendable {
 
 #if os(iOS)
 @MainActor
-final class CaptureOrientationTracker: ObservableObject {
-    @Published private(set) var orientation: CaptureDeviceOrientation
+final class CaptureOrientationTracker {
+    private(set) var orientation: CaptureDeviceOrientation
+    var onOrientationChange: ((CaptureDeviceOrientation) -> Void)?
 
     private var observer: NSObjectProtocol?
 
@@ -94,6 +94,7 @@ final class CaptureOrientationTracker: ObservableObject {
         }
 
         orientation = validOrientation
+        onOrientationChange?(validOrientation)
     }
 }
 #endif
