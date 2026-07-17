@@ -34,32 +34,23 @@ struct V2CloudHomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if AppConfig.V2.showsDevelopmentIdentityControls {
-                        V2CloudIdentityPanel(
-                            session: viewModel.currentSession,
-                            selectedIdentity: developmentAuthSettings.selectedIdentity,
-                            isSwitchingIdentity: sessionStore.state == .loading,
-                            onIdentitySelected: handleIdentitySelection
-                        )
-                    }
+                VStack(alignment: .leading, spacing: 18) {
+                    V2CloudHomeHeader(
+                        onCreateRoll: {
+                            isShowingCreateRoll = true
+                        },
+                        onRefresh: {
+                            Task {
+                                await viewModel.refresh()
+                            }
+                        }
+                    )
+                    .padding(.top, 12)
 
                     if let inviteToken = viewModel.lastCreatedSharedInviteToken {
                         V2CloudInviteSharePanel(
                             rollTitle: viewModel.lastCreatedSharedRollTitle ?? "Shared Roll",
                             inviteToken: inviteToken
-                        )
-                    }
-
-                    if AppConfig.V2.showsDeveloperUI {
-                        V2CloudJoinRollPanel(
-                            inviteToken: $viewModel.joinInviteToken,
-                            isJoining: viewModel.isJoiningRoll,
-                            onJoin: {
-                                Task {
-                                    await viewModel.joinSharedRoll()
-                                }
-                            }
                         )
                     }
 
@@ -80,6 +71,8 @@ struct V2CloudHomeView: View {
                         rolls: viewModel.rolls,
                         selectedIdentity: developmentAuthSettings.selectedIdentity,
                         dependencies: dependencies,
+                        participantRepository: dependencies.participantRepository,
+                        exposureMirrorStore: dependencies.exposureMirrorStore,
                         onRetry: {
                             Task {
                                 await viewModel.refresh()
@@ -92,39 +85,20 @@ struct V2CloudHomeView: View {
             .background(
                 LinearGradient(
                     colors: [
-                        Color(red: 0.08, green: 0.06, blue: 0.05),
-                        Color(red: 0.11, green: 0.09, blue: 0.07)
+                        Color(red: 0.995, green: 0.976, blue: 0.94),
+                        Color(red: 0.965, green: 0.94, blue: 0.90)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
             )
-            .navigationTitle(AppConfig.V2.navigationTitle)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        isShowingCreateRoll = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.headline.weight(.semibold))
-                    }
-                    .accessibilityLabel("Create roll")
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Refresh") {
-                        Task {
-                            await viewModel.refresh()
-                        }
-                    }
-                    .disabled(sessionStore.state == .loading)
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $isShowingCreateRoll) {
                 V2CloudCreateRollView(
                     draftTitle: $viewModel.draftTitle,
                     selectedCreationType: $viewModel.selectedCreationType,
+                    selectedFilmStock: $viewModel.selectedFilmStock,
                     selectedExposureCount: $viewModel.selectedExposureCount,
                     isCreating: viewModel.isCreatingRoll,
                     onCreate: {
@@ -231,6 +205,64 @@ struct V2CloudHomeView: View {
 
 }
 
+private struct V2CloudHomeHeader: View {
+    let onCreateRoll: () -> Void
+    let onRefresh: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .center) {
+                Text("snaproll")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .tracking(-1.0)
+                    .foregroundStyle(Color(red: 0.13, green: 0.10, blue: 0.09))
+
+                Spacer()
+
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.16, green: 0.12, blue: 0.10))
+                        .frame(width: 42, height: 42)
+                        .background(.white.opacity(0.72), in: Circle())
+                        .overlay {
+                            Circle()
+                                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                        }
+                }
+                .accessibilityLabel("Refresh rolls")
+            }
+
+            HStack(alignment: .center) {
+                Text("My Rolls")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.09))
+
+                Spacer()
+
+                Button(action: onCreateRoll) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("New Roll")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(Color(red: 0.86, green: 0.34, blue: 0.05))
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 10)
+                    .background(.white.opacity(0.74), in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(Color(red: 0.86, green: 0.34, blue: 0.05).opacity(0.12), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.04), radius: 10, x: 0, y: 4)
+                }
+                .accessibilityLabel("Create new roll")
+            }
+        }
+    }
+}
+
 private struct V2CloudIdentityPanel: View {
     let session: AuthSession?
     let selectedIdentity: DevelopmentAuthIdentity
@@ -299,6 +331,7 @@ private struct V2CloudCreateRollView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var draftTitle: String
     @Binding var selectedCreationType: V2Domain.RollType
+    @Binding var selectedFilmStock: FilmStock
     @Binding var selectedExposureCount: Int
     let isCreating: Bool
     let onCreate: () async -> Bool
@@ -306,76 +339,83 @@ private struct V2CloudCreateRollView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 28) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Create Roll")
-                            .font(.largeTitle.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color(red: 0.10, green: 0.10, blue: 0.10))
 
                         Text("Choose a name, type, and exposure count.")
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.62))
+                            .foregroundStyle(Color.black.opacity(0.55))
                     }
+                    .padding(.top, 22)
 
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Roll Name")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.58))
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
 
                         TextField("Untitled Roll", text: $draftTitle)
                             .textInputAutocapitalization(.words)
                             .disableAutocorrection(true)
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 18)
                             .background(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .fill(.white.opacity(0.08))
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(.white.opacity(0.72))
                             )
-                            .foregroundStyle(.white)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
+                            }
+                            .foregroundStyle(Color(red: 0.12, green: 0.11, blue: 0.10))
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Roll Type")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.58))
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Choose Roll Type")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
 
-                        Picker("Roll Type", selection: $selectedCreationType) {
-                            Text("Personal").tag(V2Domain.RollType.personal)
-                            Text("Shared").tag(V2Domain.RollType.shared)
+                            Text("Pick the vibe for your roll.")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.black.opacity(0.52))
                         }
-                        .pickerStyle(.segmented)
+
+                        HStack(spacing: 14) {
+                            V2RollStyleSelectionCard(
+                                filmStock: .kodakGold200,
+                                selectedFilmStock: $selectedFilmStock
+                            )
+
+                            V2RollStyleSelectionCard(
+                                filmStock: .fujifilmSuperia400,
+                                selectedFilmStock: $selectedFilmStock
+                            )
+                        }
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Exposures")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.58))
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Exposures")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
+
+                            Text("Choose how many shots are on this roll.")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.black.opacity(0.52))
+                        }
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 ForEach(AppConfig.V2.createRollExposureCounts, id: \.self) { count in
-                                    Button {
+                                    V2ExposureSelectionPill(
+                                        count: count,
+                                        isSelected: selectedExposureCount == count,
+                                        accent: selectedFilmStock.createRollAccent
+                                    ) {
                                         selectedExposureCount = count
-                                    } label: {
-                                        VStack(spacing: 2) {
-                                            Text("\(count)")
-                                                .font(.title3.weight(.semibold))
-                                            Text("shots")
-                                                .font(.caption2.weight(.medium))
-                                                .textCase(.uppercase)
-                                                .opacity(0.7)
-                                        }
-                                        .frame(width: 72, height: 64)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(selectedExposureCount == count ? .black : .white)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                            .fill(selectedExposureCount == count ? Color(red: 0.94, green: 0.76, blue: 0.13) : .white.opacity(0.08))
-                                    )
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                            .strokeBorder(selectedExposureCount == count ? .clear : .white.opacity(0.12), lineWidth: 1)
                                     }
                                 }
                             }
@@ -393,31 +433,32 @@ private struct V2CloudCreateRollView: View {
                     } label: {
                         if isCreating {
                             ProgressView()
-                                .tint(.black)
+                                .tint(.white)
                                 .frame(maxWidth: .infinity)
                         } else {
                             Text("Create Roll")
-                                .fontWeight(.semibold)
+                                .font(.title3.weight(.bold))
                                 .frame(maxWidth: .infinity)
                         }
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.black)
-                    .padding(.vertical, 15)
+                    .foregroundStyle(.white)
+                    .padding(.vertical, 18)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color(red: 0.94, green: 0.76, blue: 0.13))
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(selectedFilmStock.createRollAccent)
                     )
                     .disabled(isCreating)
-                    .padding(.top, 4)
+                    .padding(.top, 6)
                 }
-                .padding(20)
+                .padding(.horizontal, 32)
+                .padding(.bottom, 28)
             }
             .background(
                 LinearGradient(
                     colors: [
-                        Color(red: 0.08, green: 0.06, blue: 0.05),
-                        Color(red: 0.11, green: 0.09, blue: 0.07)
+                        Color(red: 0.995, green: 0.976, blue: 0.94),
+                        Color(red: 0.965, green: 0.94, blue: 0.90)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -425,19 +466,154 @@ private struct V2CloudCreateRollView: View {
                 .ignoresSafeArea()
             )
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(Color(red: 0.92, green: 0.29, blue: 0.02))
+                    }
+                    .disabled(isCreating)
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") {
                         dismiss()
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color(red: 0.92, green: 0.29, blue: 0.02))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(.white.opacity(0.62), in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
                     }
                     .disabled(isCreating)
                 }
             }
             .onAppear {
+                selectedCreationType = .personal
+                if !FilmStock.allCases.contains(selectedFilmStock) {
+                    selectedFilmStock = .kodakGold200
+                }
                 if !AppConfig.V2.createRollExposureCounts.contains(selectedExposureCount),
                    let defaultCount = AppConfig.V2.createRollExposureCounts.first {
                     selectedExposureCount = defaultCount
                 }
             }
+        }
+    }
+}
+
+private struct V2RollStyleSelectionCard: View {
+    let filmStock: FilmStock
+    @Binding var selectedFilmStock: FilmStock
+
+    private var isSelected: Bool {
+        selectedFilmStock == filmStock
+    }
+
+    var body: some View {
+        Button {
+            selectedFilmStock = filmStock
+        } label: {
+            VStack(spacing: 12) {
+                HStack {
+                    Spacer()
+
+                    ZStack {
+                        Circle()
+                            .strokeBorder(isSelected ? filmStock.createRollAccent : Color.black.opacity(0.20), lineWidth: 1.5)
+                            .frame(width: 22, height: 22)
+
+                        if isSelected {
+                            Circle()
+                                .fill(filmStock.createRollAccent)
+                                .frame(width: 22, height: 22)
+
+                            Image(systemName: "checkmark")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+
+                Image(filmStock.createRollSpriteName)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(height: 90)
+                    .accessibilityHidden(true)
+
+                Text(filmStock.displayName)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color(red: 0.12, green: 0.11, blue: 0.10))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .frame(height: 242)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isSelected ? filmStock.createRollAccent.opacity(0.06) : .white.opacity(0.68))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isSelected ? filmStock.createRollAccent : Color.black.opacity(0.08), lineWidth: isSelected ? 1.5 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct V2ExposureSelectionPill: View {
+    let count: Int
+    let isSelected: Bool
+    let accent: Color
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 2) {
+                Text("\(count)")
+                    .font(.title2.weight(.bold))
+
+                Text("shots")
+                    .font(.caption2.weight(.bold))
+                    .textCase(.uppercase)
+            }
+            .frame(width: 78, height: 70)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isSelected ? accent : Color.black.opacity(0.58))
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(isSelected ? accent.opacity(0.08) : .white.opacity(0.64))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(isSelected ? accent.opacity(0.55) : Color.black.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private extension FilmStock {
+    var createRollSpriteName: String {
+        switch self {
+        case .kodakGold200, .ilfordHP5Plus:
+            return "started_flame"
+        case .fujifilmSuperia400:
+            return "started_ice"
+        }
+    }
+
+    var createRollAccent: Color {
+        switch self {
+        case .kodakGold200, .ilfordHP5Plus:
+            return Color(red: 0.95, green: 0.30, blue: 0.00)
+        case .fujifilmSuperia400:
+            return Color(red: 0.20, green: 0.56, blue: 0.96)
         }
     }
 }
@@ -561,19 +737,17 @@ private struct V2CloudRollListSection: View {
     let rolls: [LocalRoll]
     let selectedIdentity: DevelopmentAuthIdentity
     let dependencies: V2DependencyContainer
+    let participantRepository: any ParticipantRepository
+    let exposureMirrorStore: any ExposureMirrorStore
     let onRetry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("My Rolls")
-                .font(.headline)
-                .foregroundStyle(.white.opacity(0.95))
-
             switch state {
             case .idle, .loading:
-                ProgressView("Loading cloud rolls")
-                    .tint(.white)
-                    .foregroundStyle(.white.opacity(0.8))
+                ProgressView("Loading rolls")
+                    .tint(Color(red: 0.86, green: 0.34, blue: 0.05))
+                    .foregroundStyle(Color.black.opacity(0.62))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
             case .signedOut:
@@ -583,7 +757,7 @@ private struct V2CloudRollListSection: View {
                 )
             case .empty:
                 V2CloudStatusCard(
-                    title: "No personal rolls yet",
+                    title: "No rolls yet",
                     message: emptyStateMessage
                 )
             case .failed(let message):
@@ -594,7 +768,7 @@ private struct V2CloudRollListSection: View {
                     )
 
                     Button("Retry Load", action: onRetry)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.bordered)
                 }
             case .loaded:
                 VStack(spacing: 12) {
@@ -614,23 +788,18 @@ private struct V2CloudRollListSection: View {
                                 )
                             }
                         } label: {
-                            V2CloudRollCard(roll: roll)
+                            V2CloudRollCard(
+                                roll: roll,
+                                participantRepository: participantRepository,
+                                exposureMirrorStore: exposureMirrorStore
+                            )
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
         }
-        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.white.opacity(0.08))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        }
     }
 
     private var emptyStateMessage: String {
@@ -638,7 +807,7 @@ private struct V2CloudRollListSection: View {
             return "Use the + button, then switch identities to verify user-scoped cloud visibility."
         }
 
-        return "Create your first roll to start building your memories."
+        return "Create your first roll and start making memories"
     }
 }
 
@@ -650,55 +819,230 @@ private struct V2CloudStatusCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color(red: 0.14, green: 0.11, blue: 0.10))
 
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(.white.opacity(0.65))
+                .foregroundStyle(Color.black.opacity(0.56))
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.black.opacity(0.16))
+                .fill(.white.opacity(0.72))
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+        }
     }
 }
 
 private struct V2CloudRollCard: View {
     let roll: LocalRoll
-
-    private var statusLabel: String {
-        roll.status.rawValue.replacingOccurrences(of: "_", with: " ")
-    }
-
-    private var filmLabel: String {
-        FilmStock(rawValue: roll.film_stock_id)?.displayName ?? roll.film_stock_id
-    }
+    let participantRepository: any ParticipantRepository
+    let exposureMirrorStore: any ExposureMirrorStore
+    @State private var participantCount: Int?
+    @State private var capturedExposureCount: Int?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(roll.title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
+        HStack(spacing: 16) {
+            Image(spriteName)
+                .resizable()
+                .interpolation(.none)
+                .scaledToFit()
+                .frame(width: 82, height: 82)
+                .accessibilityHidden(true)
 
-            Text(filmLabel)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.72))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(roll.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.09))
+                    .lineLimit(2)
 
-            HStack {
-                Text("\(roll.type.rawValue.capitalized) · \(statusLabel)")
-                Spacer()
-                Text("\(roll.exposures_per_participant) exp")
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(statusAccent)
+                        .frame(width: 7, height: 7)
+
+                    Text(statusText)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(statusAccent)
+                }
+
+                HStack(spacing: 6) {
+                    if roll.type == .shared && roll.status == .waitingForParticipants {
+                        Image(systemName: "person.2")
+                            .font(.caption)
+                    }
+
+                    Text(secondaryMetadata)
+                        .font(.subheadline)
+                }
+                .foregroundStyle(Color.black.opacity(0.48))
             }
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(.white.opacity(0.62))
+
+            Spacer(minLength: 10)
+
+            trailingContent
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.26))
         }
-        .padding(16)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.black.opacity(0.18))
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.white.opacity(0.88))
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.045), radius: 14, x: 0, y: 7)
+        .task(id: roll.id) {
+            await loadCardMetadata()
+        }
     }
+
+    @ViewBuilder
+    private var trailingContent: some View {
+        if roll.status == .revealed || roll.status == .readyToReveal {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkle")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("revealed")
+                    .font(.subheadline.weight(.medium))
+            }
+            .foregroundStyle(Color.black.opacity(0.42))
+        } else if roll.type == .shared && roll.status == .waitingForParticipants {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("\(participantCount ?? 1) / 10")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.09))
+                Text("joined")
+                    .font(.caption)
+                    .foregroundStyle(Color.black.opacity(0.44))
+                progressBar(progress: min(Double(participantCount ?? 1) / 10.0, 1.0))
+            }
+            .frame(width: 92, alignment: .leading)
+        } else {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("\(capturedCount) / \(roll.exposures_per_participant)")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.09))
+                Text("shots")
+                    .font(.caption)
+                    .foregroundStyle(Color.black.opacity(0.44))
+                progressBar(progress: exposureProgress)
+            }
+            .frame(width: 92, alignment: .leading)
+        }
+    }
+
+    private func progressBar(progress: Double) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.black.opacity(0.07))
+                Capsule()
+                    .fill(styleAccent)
+                    .frame(width: proxy.size.width * progress)
+            }
+        }
+        .frame(height: 5)
+    }
+
+    private var statusText: String {
+        switch roll.status {
+        case .draft, .shooting:
+            return "started"
+        case .waitingForParticipants:
+            return "waiting"
+        case .readyToReveal, .revealed:
+            return "completed"
+        }
+    }
+
+    private var secondaryMetadata: String {
+        if roll.type == .shared && roll.status == .waitingForParticipants {
+            return "\(participantCount ?? 1)/10 joined"
+        }
+
+        return Self.dateFormatter.string(from: roll.created_at)
+    }
+
+    private var capturedCount: Int {
+        if roll.status == .readyToReveal || roll.status == .revealed {
+            return roll.exposures_per_participant
+        }
+
+        return capturedExposureCount ?? 0
+    }
+
+    private var exposureProgress: Double {
+        guard roll.exposures_per_participant > 0 else {
+            return 0
+        }
+
+        return min(Double(capturedCount) / Double(roll.exposures_per_participant), 1.0)
+    }
+
+    private var spriteName: String {
+        "\(spriteLifecycle)_\(spriteStyle)"
+    }
+
+    private var spriteLifecycle: String {
+        switch roll.status {
+        case .draft, .shooting:
+            return "started"
+        case .waitingForParticipants:
+            return "waiting"
+        case .readyToReveal, .revealed:
+            return "completed"
+        }
+    }
+
+    private var spriteStyle: String {
+        isCoolRoll ? "ice" : "flame"
+    }
+
+    private var isCoolRoll: Bool {
+        FilmStock(rawValue: roll.film_stock_id) == .fujifilmSuperia400
+    }
+
+    private var styleAccent: Color {
+        isCoolRoll
+            ? Color(red: 0.12, green: 0.54, blue: 0.96)
+            : Color(red: 0.90, green: 0.38, blue: 0.04)
+    }
+
+    private var statusAccent: Color {
+        switch roll.status {
+        case .readyToReveal, .revealed:
+            return Color(red: 0.28, green: 0.58, blue: 0.28)
+        case .draft, .waitingForParticipants, .shooting:
+            return styleAccent
+        }
+    }
+
+    private func loadCardMetadata() async {
+        if roll.type == .shared && roll.status == .waitingForParticipants {
+            if let participants = try? await participantRepository.fetchParticipants(forRollID: roll.id) {
+                participantCount = participants.count
+            }
+        }
+
+        if let exposures = try? await exposureMirrorStore.fetchExposures(forRollID: roll.id) {
+            capturedExposureCount = exposures.filter { $0.captured_at != nil || $0.sync_state != .empty }.count
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter
+    }()
 }

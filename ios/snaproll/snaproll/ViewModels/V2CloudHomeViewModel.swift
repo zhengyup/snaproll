@@ -24,6 +24,7 @@ final class V2CloudHomeViewModel: ObservableObject {
     @Published var draftTitle = ""
     @Published var joinInviteToken = ""
     @Published var selectedCreationType: V2Domain.RollType = .personal
+    @Published var selectedFilmStock: FilmStock = .kodakGold200
     @Published var selectedExposureCount: Int = AppConfig.V2.defaultCreateRollExposureCount
 
     private let authRepository: any AuthRepository
@@ -84,7 +85,7 @@ final class V2CloudHomeViewModel: ObservableObject {
             let result = try await rollRepository.createRoll(
                 title: title,
                 type: type,
-                filmStockID: FilmStock.kodakGold200.rawValue,
+                filmStockID: selectedFilmStock.rawValue,
                 exposuresPerParticipant: selectedExposureCount,
                 participantCap: type == .shared ? 10 : 1
             )

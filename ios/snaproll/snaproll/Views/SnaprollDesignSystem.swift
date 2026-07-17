@@ -149,11 +149,11 @@ struct FilmCanisterView: View {
     private var shortTitle: String {
         switch film {
         case .kodakGold200:
-            return "GOLD 200"
+            return "WARM"
         case .fujifilmSuperia400:
-            return "SUPERIA 400"
+            return "COOL"
         case .ilfordHP5Plus:
-            return "HP5 PLUS"
+            return "LEGACY"
         }
     }
 }

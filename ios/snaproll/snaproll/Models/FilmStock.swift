@@ -9,7 +9,7 @@ enum FilmStockType: String, Codable, Hashable {
         case .color:
             return "Color"
         case .blackAndWhite:
-            return "Black & White"
+            return "Legacy"
         }
     }
 }
@@ -19,27 +19,31 @@ enum FilmStock: String, CaseIterable, Codable, Hashable, Identifiable {
     case fujifilmSuperia400
     case ilfordHP5Plus
 
+    static var allCases: [FilmStock] {
+        [.kodakGold200, .fujifilmSuperia400]
+    }
+
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
         case .kodakGold200:
-            return "Kodak Gold 200"
+            return "Warm"
         case .fujifilmSuperia400:
-            return "Fujifilm Superia 400"
+            return "Cool"
         case .ilfordHP5Plus:
-            return "Ilford HP5 Plus"
+            return "Legacy"
         }
     }
 
     var shortDescription: String {
         switch self {
         case .kodakGold200:
-            return "Warm, golden, nostalgic everyday color."
+            return "Golden, soft, nostalgic everyday color."
         case .fujifilmSuperia400:
-            return "Cooler greens and blues, casual outdoor snapshot feel."
+            return "Cooler greens and blues with a clean snapshot feel."
         case .ilfordHP5Plus:
-            return "Black-and-white, contrasty, documentary feel."
+            return "Legacy rendering style for older rolls."
         }
     }
 
@@ -53,17 +57,17 @@ enum FilmStock: String, CaseIterable, Codable, Hashable, Identifiable {
     }
 
     var typeLabel: String {
-        type.displayName
+        displayName
     }
 
     var shortBrand: String {
         switch self {
         case .kodakGold200:
-            return "KODAK"
+            return "WARM"
         case .fujifilmSuperia400:
-            return "FUJI"
+            return "COOL"
         case .ilfordHP5Plus:
-            return "ILFORD"
+            return "LEGACY"
         }
     }
 
