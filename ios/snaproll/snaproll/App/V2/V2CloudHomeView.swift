@@ -387,9 +387,23 @@ private struct V2CloudCreateRollView: View {
                         .foregroundStyle(Color(red: 0.12, green: 0.11, blue: 0.10))
                 }
 
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Roll Access")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
+
+                        Text("Choose whether this roll is just yours or open to invited people.")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.black.opacity(0.52))
+                    }
+
+                    V2RollAccessSelector(selectedCreationType: $selectedCreationType)
+                }
+
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Choose Roll Type")
+                        Text("Choose Feel")
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(Color(red: 0.14, green: 0.13, blue: 0.12))
 
@@ -483,7 +497,6 @@ private struct V2CloudCreateRollView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
-            selectedCreationType = .personal
             if !FilmStock.allCases.contains(selectedFilmStock) {
                 selectedFilmStock = .kodakGold200
             }
@@ -492,6 +505,93 @@ private struct V2CloudCreateRollView: View {
                 selectedExposureCount = defaultCount
             }
         }
+    }
+}
+
+private struct V2RollAccessSelector: View {
+    @Binding var selectedCreationType: V2Domain.RollType
+
+    var body: some View {
+        VStack(spacing: 10) {
+            V2RollAccessOption(
+                title: "Personal",
+                subtitle: "Only you",
+                systemImage: "person",
+                isSelected: selectedCreationType == .personal,
+                accent: Color(red: 0.95, green: 0.30, blue: 0.00)
+            ) {
+                selectedCreationType = .personal
+            }
+
+            V2RollAccessOption(
+                title: "Shared",
+                subtitle: "Invite others",
+                systemImage: "person.2",
+                isSelected: selectedCreationType == .shared,
+                accent: Color(red: 0.20, green: 0.56, blue: 0.96)
+            ) {
+                selectedCreationType = .shared
+            }
+        }
+    }
+}
+
+private struct V2RollAccessOption: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let isSelected: Bool
+    let accent: Color
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(isSelected ? accent : Color.black.opacity(0.45))
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Circle()
+                            .fill(isSelected ? accent.opacity(0.12) : Color.black.opacity(0.04))
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Color(red: 0.12, green: 0.11, blue: 0.10))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(Color.black.opacity(0.50))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer(minLength: 0)
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(accent)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isSelected ? accent.opacity(0.07) : .white.opacity(0.68))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isSelected ? accent.opacity(0.55) : Color.black.opacity(0.08), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -834,12 +934,12 @@ private struct V2CloudRollCard: View {
     @State private var capturedExposureCount: Int?
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             Image(spriteName)
                 .resizable()
                 .interpolation(.none)
                 .scaledToFit()
-                .frame(width: 82, height: 82)
+                .frame(width: 76, height: 76)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 8) {
@@ -847,6 +947,7 @@ private struct V2CloudRollCard: View {
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(Color(red: 0.12, green: 0.10, blue: 0.09))
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 6) {
                     Circle()
@@ -854,8 +955,10 @@ private struct V2CloudRollCard: View {
                         .frame(width: 7, height: 7)
 
                     Text(statusText)
-                        .font(.subheadline.weight(.medium))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(statusAccent)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
 
                 HStack(spacing: 6) {
@@ -866,11 +969,15 @@ private struct V2CloudRollCard: View {
 
                     Text(secondaryMetadata)
                         .font(.subheadline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
                 .foregroundStyle(Color.black.opacity(0.48))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(2)
 
-            Spacer(minLength: 10)
+            Spacer(minLength: 6)
 
             trailingContent
 
@@ -898,13 +1005,15 @@ private struct V2CloudRollCard: View {
     @ViewBuilder
     private var trailingContent: some View {
         if roll.status == .revealed || roll.status == .readyToReveal {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 14, weight: .semibold))
-                Text("revealed")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(Color.black.opacity(0.42))
+            Image(systemName: "sparkle")
+                .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.black.opacity(0.46))
+            .frame(width: 32, height: 32)
+            .background(
+                Circle()
+                    .fill(Color.black.opacity(0.045))
+            )
+            .accessibilityLabel("Revealed")
         } else if roll.type == .shared && roll.status == .waitingForParticipants {
             VStack(alignment: .leading, spacing: 5) {
                 Text("\(participantCount ?? 1) / 10")
